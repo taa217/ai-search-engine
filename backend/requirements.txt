@@ -23,6 +23,7 @@ langchain-openai>=0.0.5
 langchain-community>=0.0.10
 langchain-anthropic>=0.1.1
 langchain-google-genai>=0.0.3
+langchain_pinecone>=0.1.1
 tenacity>=8.2.3
 
 # Vector Databases (Optional: uncomment what you need)
