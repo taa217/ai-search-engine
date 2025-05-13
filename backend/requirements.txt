@@ -55,7 +55,7 @@ pytest-cov>=4.1.0
 orjson>=3.9.5
 aiodns>=3.0.0  # For better async DNS resolution
 brotli>=1.0.9  # For compression support
-cchardet>=2.1.7  # Fast character encoding detection
+chardet>=5.0.0  # Character encoding detection
 
 # Added grpcio dependency
 grpcio>=1.71.0
