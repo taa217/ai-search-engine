@@ -29,7 +29,7 @@ app = FastAPI(title="Nexus AI Search API")
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=["https://ai-search-engine-roan.vercel.app", "http://localhost:3000"],  # Allow frontend domain and local development
     allow_credentials=True,
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
