@@ -10,10 +10,15 @@ import {
   Text,
   SlideFade,
   useBreakpointValue,
-  Textarea
+  Textarea,
+  ButtonGroup,
+  Button,
+  Icon,
+  VStack
 } from '@chakra-ui/react';
-import { ArrowForwardIcon, SearchIcon, ChatIcon } from '@chakra-ui/icons';
-import { useSearch } from 'context/SearchContext';
+import { ArrowForwardIcon, SearchIcon as ChakraSearchIcon, ChatIcon } from '@chakra-ui/icons';
+import { FiBriefcase, FiSearch } from 'react-icons/fi';
+import { useSearchContext } from 'context/SearchContext';
 
 interface FollowUpSearchProps {
   onSearch: (query: string) => void;
@@ -30,20 +35,38 @@ const FollowUpSearch: React.FC<FollowUpSearchProps> = ({
 }) => {
   const [query, setQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
-  const { isConversationMode, searchThread } = useSearch();
+  const { 
+    isConversationMode, 
+    searchThread, 
+    agenticSearchMode, 
+    setAgenticSearchMode 
+  } = useSearchContext();
   
+  // Hoist all useColorModeValue calls to the top level
   const bgColor = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.700');
   const hoverBg = useColorModeValue('gray.50', 'gray.700');
+  const buttonActiveBg = useColorModeValue("blue.50", "blue.800");
+  const buttonActiveColor = useColorModeValue("blue.600", "blue.200");
+  const buttonHoverBg = useColorModeValue("gray.100", "gray.700");
+  const activeResearchIconColorValue = useColorModeValue("blue.600", "blue.200");
+  const researchIconColor = agenticSearchMode ? activeResearchIconColorValue : "currentColor";
+
+  const textareaBg = useColorModeValue("gray.100", "gray.700");
+  const textareaHoverBg = useColorModeValue("gray.200", "gray.600");
+  const textareaFocusBg = useColorModeValue("gray.100", "gray.700");
+  const textareaFocusBorderColor = useColorModeValue("gray.300", "gray.500");
+  const textareaBorderColor = useColorModeValue("gray.200", "gray.600");
+
   const isMobile = useBreakpointValue({ base: true, md: false });
 
-  // Dynamic placeholder text based on conversation context
   const getPlaceholderText = () => {
+    if (agenticSearchMode) {
+      return "Ask for in-depth research...";
+    }
     if (!isConversationMode || searchThread.length === 0) {
       return "Ask anything...";
     }
-    
-    // In conversation mode with previous searches
     return "Continue the conversation...";
   };
 
@@ -65,7 +88,7 @@ const FollowUpSearch: React.FC<FollowUpSearchProps> = ({
     }
   };
 
-  // Mobile-optimized version
+  // Mobile-optimized version with integrated toggle
   if (isMobile) {
     return (
       <Box
@@ -78,27 +101,51 @@ const FollowUpSearch: React.FC<FollowUpSearchProps> = ({
         borderTopWidth="1px"
         borderTopColor={borderColor}
         zIndex={100}
+        p={3}
       >
         <form onSubmit={handleSubmit}>
-          <Box px={3} py={3}>
+          <VStack spacing={2} align="stretch">
+            <ButtonGroup size="sm" isAttached variant="outline" width="100%">
+              <Button 
+                leftIcon={<Icon as={FiSearch} />}
+                onClick={() => setAgenticSearchMode(false)} 
+                isActive={!agenticSearchMode}
+                flex="1"
+                mr="-px"
+                _active={{ bg: buttonActiveBg, color: buttonActiveColor }}
+                _hover={{ bg: buttonHoverBg }}
+              >
+                Standard
+              </Button>
+              <Button 
+                leftIcon={<Icon as={FiBriefcase} color={researchIconColor} />}
+                onClick={() => setAgenticSearchMode(true)} 
+                isActive={agenticSearchMode}
+                flex="1"
+                _active={{ bg: buttonActiveBg, color: buttonActiveColor }}
+                _hover={{ bg: buttonHoverBg }}
+              >
+                Research
+              </Button>
+            </ButtonGroup>
             <Box position="relative">
               <Textarea
                 placeholder={getPlaceholderText()}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
-                bg="gray.100"
-                _hover={{ bg: "gray.200" }}
-                _focus={{ bg: "gray.100", borderColor: "gray.300" }}
+                bg={textareaBg}
+                _hover={{ bg: textareaHoverBg }}
+                _focus={{ bg: textareaFocusBg, borderColor: textareaFocusBorderColor }}
                 borderRadius="xl"
-                minHeight="60px"
+                minHeight="50px"
                 maxHeight="120px"
                 fontSize="sm"
                 paddingRight="50px"
-                paddingY="16px"
+                paddingY="12px"
                 paddingLeft="16px"
                 borderWidth="1px"
-                borderColor="gray.200"
+                borderColor={textareaBorderColor}
                 resize="none"
                 overflowY="auto"
               />
@@ -118,13 +165,13 @@ const FollowUpSearch: React.FC<FollowUpSearchProps> = ({
                 />
               </Box>
             </Box>
-          </Box>
+          </VStack>
         </form>
       </Box>
     );
   }
 
-  // Original desktop version
+  // Desktop version with integrated toggle
   return (
     <SlideFade in={isVisible} offsetY="20px">
       <Box
@@ -134,9 +181,8 @@ const FollowUpSearch: React.FC<FollowUpSearchProps> = ({
         transform={useFixedPosition ? "translateX(-50%)" : undefined}
         width={useFixedPosition ? { base: "calc(100% - 32px)", md: "80%", lg: "70%" } : "100%"}
         maxW={useFixedPosition ? { base: "calc(100% - 32px)", md: "calc(100% - 48px)", lg: "1400px" } : "100%"}
-        px={useFixedPosition ? { base: 4, md: 6 } : 0}
+        px={useFixedPosition ? { base: 4, md: 0 } : 0}
         zIndex={useFixedPosition ? 10 : undefined}
-        mb={isMobile ? 0 : undefined}
       >
         <Box
           boxShadow={isFocused ? "2xl" : (useFixedPosition ? "xl" : "none")}
@@ -144,71 +190,80 @@ const FollowUpSearch: React.FC<FollowUpSearchProps> = ({
           bg={bgColor}
           borderWidth="1px"
           borderColor={isFocused ? "blue.400" : borderColor}
-          overflow="hidden"
+          overflow="visible"
           transition="all 0.2s ease"
           _hover={{ boxShadow: useFixedPosition ? "2xl" : "none", borderColor: "blue.400" }}
-          mb={0}
         >
           <form onSubmit={handleSubmit}>
-            <Flex 
-              align="center" 
-              p={{ base: 2, md: 3 }}
-              flexDir="row"
-            >
-              <Box 
-                fontWeight="medium" 
-                color="blue.600"
-                ml={{ base: 2, md: 3 }}
-                mr={{ base: 1, md: 2 }}
-                display="flex"
-                alignItems="center"
-                width="auto"
-                flexShrink={0}
+            <VStack spacing={0} align="stretch">
+              <ButtonGroup 
+                size="sm" 
+                isAttached 
+                variant="outline" 
+                p={useFixedPosition ? 2 : 1}
+                pb={0}
               >
-                {isConversationMode ? (
-                  <ChatIcon boxSize={{ base: "14px", md: "16px" }} mr={{ base: 1, md: 2 }} />
-                ) : (
-                  <SearchIcon boxSize={{ base: "14px", md: "16px" }} mr={{ base: 1, md: 2 }} />
-                )}
-                <Text 
-                  fontSize={{ base: "xs", md: "sm" }}
-                  display={{ base: "none", md: "block" }}
-                  whiteSpace="nowrap"
+                <Button 
+                  leftIcon={<Icon as={FiSearch} />}
+                  onClick={() => setAgenticSearchMode(false)} 
+                  isActive={!agenticSearchMode}
+                  flexGrow={1}
+                  borderBottomRadius={0}
+                  _active={{ bg: buttonActiveBg, color: buttonActiveColor }}
+                  _hover={{ bg: buttonHoverBg }}
                 >
-                  {isConversationMode ? "Ask Nexus:" : "Search:"}
-                </Text>
-              </Box>
-              <InputGroup size={{ base: "md", md: "lg" }}>
-                <Input
-                  placeholder={getPlaceholderText()}
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  border="none"
-                  fontSize={{ base: "sm", md: "md" }}
-                  height={{ base: "40px", md: "50px" }}
-                  _focus={{ boxShadow: "none" }}
-                  _hover={{ bg: hoverBg }}
-                  onFocus={() => setIsFocused(true)}
-                  onBlur={() => setIsFocused(false)}
-                  pr="4rem"
-                  autoFocus={!useFixedPosition}
-                />
-                <InputRightElement width="3.5rem" h="full">
-                  <IconButton
-                    size={{ base: "sm", md: "md" }}
-                    type="submit"
-                    colorScheme="blue"
-                    aria-label="Send question"
-                    icon={<ArrowForwardIcon />}
-                    isRound
-                    mr={{ base: 1, md: 2 }}
-                    _hover={{ transform: 'scale(1.05)' }}
-                    transition="all 0.2s"
+                  Standard
+                </Button>
+                <Button 
+                  leftIcon={<Icon as={FiBriefcase} color={researchIconColor} />}
+                  onClick={() => setAgenticSearchMode(true)} 
+                  isActive={agenticSearchMode}
+                  flexGrow={1}
+                  borderBottomRadius={0}
+                  _active={{ bg: buttonActiveBg, color: buttonActiveColor }}
+                  _hover={{ bg: buttonHoverBg }}
+                >
+                  Deep Research
+                </Button>
+              </ButtonGroup>
+              <Flex 
+                align="center" 
+                p={{ base: 2, md: useFixedPosition ? 2 : 1 }}
+                pt={{ base:1, md: useFixedPosition ? 1 : 0.5}}
+                flexDir="row"
+              >
+                <InputGroup size={{ base: "md", md: "lg" }}>
+                  <Input
+                    placeholder={getPlaceholderText()}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    border="none"
+                    fontSize={{ base: "sm", md: "md" }}
+                    height={{ base: "40px", md: "50px" }}
+                    _focus={{ boxShadow: "none" }}
+                    _hover={{ bg: hoverBg }}
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => setIsFocused(false)}
+                    pr="4rem"
+                    autoFocus={!useFixedPosition}
                   />
-                </InputRightElement>
-              </InputGroup>
-            </Flex>
+                  <InputRightElement width="3.5rem" h="full">
+                    <IconButton
+                      size={{ base: "sm", md: "md" }}
+                      type="submit"
+                      colorScheme="blue"
+                      aria-label="Send question"
+                      icon={<ArrowForwardIcon />}
+                      isRound
+                      mr={{ base: 1, md: 2 }}
+                      _hover={{ transform: 'scale(1.05)' }}
+                      transition="all 0.2s"
+                    />
+                  </InputRightElement>
+                </InputGroup>
+              </Flex>
+            </VStack>
           </form>
         </Box>
       </Box>

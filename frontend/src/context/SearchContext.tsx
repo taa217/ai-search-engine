@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, ReactNode, useCallback, use
 import axios from 'axios';
 
 // API base URL - update this to your actual API endpoint
-const API_BASE_URL = 'https://ai-search-engine-qli1.onrender.com';
+const API_BASE_URL = 'http://localhost:8000'; //'https://ai-search-engine-qli1.onrender.com';
 
 // Types
 export interface SearchResult {
@@ -51,6 +51,27 @@ export interface VideoResult {
   description?: string;
 }
 
+export interface ResearchStep {
+  id: string;
+  query: string;
+  reasoning: string;
+  results_count: number;
+  timestamp: string;
+  execution_time: number;
+}
+
+export interface AgenticSearchResponse {
+  plan_id: string;
+  original_query: string;
+  research_steps: ResearchStep[];
+  synthesis: string;
+  status: string; // "initiated", "in_progress", "completed", "error"
+  iterations_completed: number;
+  max_iterations: number;
+  error?: string;
+  conversation_context?: string;
+}
+
 export interface SearchResponse {
   results: SearchResult[];
   reasoning: ReasoningStep[];
@@ -94,6 +115,13 @@ interface SearchOptions {
   modelName?: string;
 }
 
+interface AgenticSearchOptions {
+  planId?: string;
+  sessionId?: string;
+  maxIterations?: number;
+  previousContext?: string;
+}
+
 interface SearchProviderProps {
   children: ReactNode;
 }
@@ -108,6 +136,7 @@ interface SearchContextProps {
   executionTime: number;
   error: string | null;
   performSearch: (searchQuery?: string, options?: SearchOptions) => Promise<void>;
+  performAgenticSearch: (searchQuery?: string, options?: AgenticSearchOptions) => Promise<void>;
   retrySearch: (searchId: string) => Promise<void>;
   sessionHistory: string[];
   sessionId: string | null;
@@ -122,6 +151,9 @@ interface SearchContextProps {
   setConversationMode: (mode: boolean) => void;
   conversationContext: string;
   relatedSearches: string[];
+  agenticSearch: AgenticSearchResponse | null;
+  agenticSearchMode: boolean;
+  setAgenticSearchMode: (mode: boolean) => void;
 }
 
 // Create context
@@ -146,6 +178,8 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
   const [isConversationMode, setConversationMode] = useState<boolean>(true);
   const [conversationContext, setConversationContext] = useState<string>('');
   const [relatedSearches, setRelatedSearches] = useState<string[]>([]);
+  const [agenticSearch, setAgenticSearch] = useState<AgenticSearchResponse | null>(null);
+  const [agenticSearchMode, setAgenticSearchMode] = useState<boolean>(false);
   
   // Thread of search items to maintain conversation context in UI
   const [searchThread, setSearchThread] = useState<SearchThreadItem[]>([]);
@@ -313,6 +347,176 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
     }
   };
 
+  const performAgenticSearch = async (searchQuery?: string, options: AgenticSearchOptions = {}) => {
+    const searchTerm = searchQuery || query;
+    
+    if (!searchTerm.trim()) {
+      setError('Please enter a search query');
+      return;
+    }
+
+    try {
+      // Create a new search thread item in loading state, similar to standard search
+      const newSearchId = `agentic-search-${Date.now()}`;
+      const newSearchItem: SearchThreadItem = {
+        id: newSearchId,
+        query: searchTerm,
+        results: [],
+        sources: [],
+        reasoning: [],
+        timestamp: new Date(),
+        isLoading: true,
+        isError: false,
+        imageResults: [],
+        videoResults: [],
+        hasImages: false,
+        hasVideos: false,
+        relatedSearches: []
+      };
+
+      // Add to thread history
+      setSearchThread(prev => [...prev, newSearchItem]);
+      
+      setIsLoading(true);
+      setError(null);
+      setAgenticSearch(null);
+
+      // Add to session history
+      setSessionHistory(prev => [...prev, searchTerm]);
+
+      // Build context from previous searches if in conversation mode
+      let previousContext = options.previousContext || '';
+      
+      // If this is a follow-up question, build context from previous searches
+      if (isConversationMode && searchThread.length > 0) {
+        // Get the last few search items for context
+        const contextItems = searchThread.slice(-3);
+        
+        // Format context items
+        const formattedContext = contextItems.map(item => 
+          `Query: ${item.query}\nAnswer: ${item.results[0]?.content || ''}`
+        ).join('\n\n');
+        
+        // Add to context
+        previousContext = formattedContext;
+        
+        // Debug log
+        console.log('Applying conversation context to deep research:', {
+          contextLength: previousContext.length,
+          searchThreadLength: searchThread.length,
+          query: searchTerm
+        });
+      }
+
+      // Connect to the backend API for agentic search
+      const response = await axios.post<AgenticSearchResponse>(`${API_BASE_URL}/agentic-search`, {
+        query: searchTerm,
+        session_id: options.sessionId || sessionId,
+        plan_id: options.planId,
+        max_iterations: options.maxIterations || 5,
+        conversation_context: previousContext,
+        conversation_mode: isConversationMode
+      });
+
+      // Store the agentic search response
+      setAgenticSearch(response.data);
+      
+      // Set current query
+      setQuery(searchTerm);
+      
+      // Format the agentic search result as a standard search result
+      const formattedResult = {
+        content: response.data.synthesis,
+        type: 'text'
+      };
+      
+      // Format research steps as reasoning steps
+      const formattedReasoning = response.data.research_steps.map((step, index) => ({
+        step: index + 1,
+        thought: `${step.query} - ${step.reasoning}`
+      }));
+      
+      // Update the search thread item with results
+      setSearchThread(prev => {
+        const updatedThread = [...prev];
+        const loadingItemIndex = updatedThread.findIndex(item => item.id === newSearchId);
+        
+        if (loadingItemIndex !== -1) {
+          updatedThread[loadingItemIndex] = {
+            ...updatedThread[loadingItemIndex],
+            results: [formattedResult],
+            reasoning: formattedReasoning,
+            isLoading: false,
+            isError: false,
+            // We don't have image results yet in agentic search
+            relatedSearches: [] // We could generate related searches from the synthesis if needed
+          };
+        }
+        
+        return updatedThread;
+      });
+      
+      // Store conversation context if available
+      if (response.data.conversation_context) {
+        setConversationContext(response.data.conversation_context);
+        
+        // Debug log
+        console.log('Received conversation context from deep research:', {
+          contextLength: response.data.conversation_context.length,
+          query: searchTerm
+        });
+      }
+      
+      // Track session ID
+      if (response.data.plan_id) {
+        // We could track plans here if needed
+        console.log(`Research plan created: ${response.data.plan_id}`);
+      }
+      
+    } catch (error) {
+      console.error('Agentic search error:', error);
+      
+      let errorMessage = 'An unexpected error occurred during research';
+      
+      if (axios.isAxiosError(error)) {
+        if (error.code === 'ECONNABORTED') {
+          errorMessage = 'Research request timed out. Please try again.';
+        } else if (error.response) {
+          if (error.response.status === 429) {
+            errorMessage = 'Too many research requests. Please wait a moment and try again.';
+          } else if (error.response.status >= 500) {
+            errorMessage = 'Our research servers are experiencing issues. Please try again later.';
+          } else {
+            errorMessage = `Research failed: ${error.response.data.detail || error.message}`;
+          }
+        } else if (error.request) {
+          errorMessage = 'No response from research server. Please check your connection and try again.';
+        }
+      }
+      
+      // Update the search thread item with error
+      setSearchThread(prev => {
+        const updatedThread = [...prev];
+        const loadingItemIndex = updatedThread.findIndex(item => item.isLoading);
+        
+        if (loadingItemIndex !== -1) {
+          updatedThread[loadingItemIndex] = {
+            ...updatedThread[loadingItemIndex],
+            results: [{content: errorMessage, type: 'error'}],
+            isLoading: false,
+            isError: true
+          };
+        }
+        
+        return updatedThread;
+      });
+      
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const performSearch = async (searchQuery?: string, options: SearchOptions = {}) => {
     const searchTerm = searchQuery || query;
     
@@ -322,6 +526,11 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
     }
 
     try {
+      // If in agentic search mode, perform agentic search instead
+      if (agenticSearchMode) {
+        return performAgenticSearch(searchTerm);
+      }
+
       // Create a new search thread item in loading state
       const newSearchId = `search-${Date.now()}`;
       const newSearchItem: SearchThreadItem = {
@@ -496,6 +705,7 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
     setEnhancedQuery(null);
     setConversationContext('');
     setRelatedSearches([]);
+    setAgenticSearch(null);
     
     // Call the backend to delete the session if we have an ID
     if (sessionId) {
@@ -514,6 +724,7 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
     executionTime,
     error,
     performSearch,
+    performAgenticSearch,
     retrySearch,
     sessionHistory,
     sessionId,
@@ -527,17 +738,23 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
     isConversationMode,
     setConversationMode,
     conversationContext,
-    relatedSearches
+    relatedSearches,
+    agenticSearch,
+    agenticSearchMode,
+    setAgenticSearchMode
   };
 
   return <SearchContext.Provider value={value}>{children}</SearchContext.Provider>;
 };
 
 // Custom hook to use the search context
-export const useSearch = () => {
+export const useSearchContext = () => {
   const context = useContext(SearchContext);
   if (context === undefined) {
-    throw new Error('useSearch must be used within a SearchProvider');
+    throw new Error('useSearchContext must be used within a SearchProvider');
   }
   return context;
 };
+
+// Backward compatibility export
+export const useSearch = useSearchContext;

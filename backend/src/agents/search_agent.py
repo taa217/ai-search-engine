@@ -145,7 +145,7 @@ class SearchAgent:
         self.session_manager = SessionManager()
         self.agent_pipeline = AgentPipeline(self.session_manager)
 
-    async def execute_search(
+    async def execute_pipeline_search(
         self,
         user_id: str,
         query: str,
@@ -186,8 +186,8 @@ class SearchAgent:
             "default": "gpt-4o"
         },
         "google": {
-            "models": ["gemini-1.5-flash", "gemini-1.5-flash"],
-            "default": "gemini-1.5-flash"
+            "models": ["gemini-2.5-flash-preview-04-17", "gemini-1.5-flash"],
+            "default": "gemini-2.5-flash-preview-04-17"
         },
         "anthropic": {
             "models": ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"],
@@ -496,8 +496,8 @@ class SearchAgent:
             
             Original query: {query}
             
-            If the query contains pronouns (he, she, it, they, etc.), replace them with the specific entities they refer to based on the conversation history.
-            Make the query more specific and expand any abbreviations or ambiguous terms.
+           
+            
             ONLY ENHANCE THE QUERY IF NECESSARY. IF NOT NECESSARY JUST RETURN THE ORIGINAL QUERY TEXT WITH NO EXPLANATION.
             DO NOT ASSUME WHAT THE USER MEANS. BUT DO WHAT YOU BELIEVE WILL BE A MUCH HELPFUL QUERY
             DO NOT include quotation marks in your enhanced query.

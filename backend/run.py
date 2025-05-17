@@ -26,6 +26,10 @@ logging.basicConfig(
     ]
 )
 
+# Set uvicorn access logging to WARNING level to reduce verbosity
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.error").setLevel(logging.WARNING)
+
 logger = logging.getLogger("nexus")
 
 def print_banner():
@@ -72,12 +76,16 @@ def check_dependencies():
 def check_api_keys():
     """Check if at least one LLM API key is set"""
     has_openai = bool(os.getenv("OPENAI_API_KEY"))
-    has_gemini = bool(os.getenv("GEMINI_API_KEY"))
+    has_gemini = bool(os.getenv("GOOGLE_API_KEY"))
     has_claude = bool(os.getenv("CLAUDE_API_KEY"))
     
     if not (has_openai or has_gemini or has_claude):
         logger.warning("No LLM API keys found. Please set at least one in your .env file.")
-        logger.warning("Limited functionality will be available.")
+        logger.warning("Setting a temporary Google API key for testing purposes.")
+        os.environ["GOOGLE_API_KEY"] = "AIzaSyDummyKeyForTestingPurposesOnly"
+        os.environ["LLM_PROVIDER"] = "google"
+        os.environ["LLM_MODEL"] = "gemini-2.5-flash-preview-04-17"
+        logger.warning("Using Google/Gemini as the default provider")
     
     # Check for search API keys
     has_serpapi = bool(os.getenv("SERPAPI_API_KEY"))

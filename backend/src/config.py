@@ -10,7 +10,10 @@ class Settings(BaseSettings):
     
     # LLM Settings
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
-    LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4-turbo-preview")
+    CLAUDE_API_KEY: Optional[str] = os.getenv("CLAUDE_API_KEY")
+    GOOGLE_API_KEY: Optional[str] = os.getenv("GOOGLE_API_KEY")
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "google")  # Options: openai, google, anthropic
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "gemini-2.5-flash-preview-04-17")
     TEMPERATURE: float = float(os.getenv("TEMPERATURE", "0.2"))
     
     # Vector DB Settings
@@ -31,7 +34,6 @@ class Settings(BaseSettings):
     # Web Search API Keys
     SERPER_API_KEY: Optional[str] = os.getenv("SERPER_API_KEY")
     SERP_API_KEY: Optional[str] = os.getenv("SERP_API_KEY")
-    GOOGLE_API_KEY: Optional[str] = os.getenv("GOOGLE_API_KEY")
     GOOGLE_CSE_ID: Optional[str] = os.getenv("GOOGLE_CSE_ID")
     
     # Caching

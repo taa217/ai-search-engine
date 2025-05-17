@@ -120,18 +120,29 @@ class DuckDuckGoSearchTool(SearchTool):
 
         results = []
         try:
+            # Set a timeout for DuckDuckGo search
+            search_timeout = 8.0  # 8 seconds timeout
+            
+            # Use asyncio.wait_for to implement the timeout
             async with AsyncDDGS() as ddgs:
-                ddg_results = await ddgs.text(query, max_results=max_results)
-
-            if ddg_results:
-                for item in ddg_results:
-                    results.append({
-                        "title": item.get("title", ""),
-                        "snippet": item.get("body", ""),
-                        "url": item.get("href", ""),
-                        "source": "web:duckduckgo"
-                    })
-            logger.info(f"Found {len(results)} DuckDuckGo results for '{query}'")
+                try:
+                    ddg_results = await asyncio.wait_for(
+                        ddgs.text(query, max_results=max_results),
+                        timeout=search_timeout
+                    )
+                    
+                    if ddg_results:
+                        for item in ddg_results:
+                            results.append({
+                                "title": item.get("title", ""),
+                                "snippet": item.get("body", ""),
+                                "url": item.get("href", ""),
+                                "source": "web:duckduckgo"
+                            })
+                    logger.info(f"Found {len(results)} DuckDuckGo results for '{query}'")
+                except asyncio.TimeoutError:
+                    logger.warning(f"DuckDuckGo search timed out after {search_timeout}s for query '{query}'")
+            
             return results
 
         except Exception as e:
@@ -164,10 +175,18 @@ class WikipediaSearchTool(SearchTool):
             # Define async helper to fetch page details
             async def fetch_page(title):
                 try:
-                    page = await loop.run_in_executor(
-                        None,
-                        lambda: wikipedia.page(title, auto_suggest=False, preload=True)
+                    # Set a timeout for Wikipedia page fetch operations
+                    page_fetch_timeout = 5.0  # 5 seconds timeout for each page fetch
+                    
+                    # Use asyncio.wait_for to implement the timeout
+                    page = await asyncio.wait_for(
+                        loop.run_in_executor(
+                            None,
+                            lambda: wikipedia.page(title, auto_suggest=False, preload=True)
+                        ),
+                        timeout=page_fetch_timeout
                     )
+                    
                     summary = page.summary
                     url = page.url
                     return {
@@ -177,6 +196,9 @@ class WikipediaSearchTool(SearchTool):
                         "url": url,
                         "source": "wikipedia"
                     }
+                except asyncio.TimeoutError:
+                    logger.warning(f"Timeout fetching Wikipedia page '{title}' after {page_fetch_timeout}s")
+                    return None
                 except wikipedia.exceptions.PageError:
                     logger.warning(f"Wikipedia page '{title}' not found or disambiguation error.")
                     return None
@@ -373,7 +395,16 @@ class SerperSearchTool(SearchTool):
 
         try:
             logger.info(f"Performing Serper.dev search for: '{query}'")
-            async with session.post("https://google.serper.dev/search", headers=headers, data=payload) as response:
+            
+            # Set explicit timeout for the HTTP request
+            timeout = aiohttp.ClientTimeout(total=8.0)  # 8 seconds timeout
+            
+            async with session.post(
+                "https://google.serper.dev/search", 
+                headers=headers, 
+                data=payload,
+                timeout=timeout
+            ) as response:
                 # Check specifically for 403 Forbidden, often indicating key issues or quota exceeded
                 if response.status == 403:
                      err_text = await response.text()
@@ -402,6 +433,9 @@ class SerperSearchTool(SearchTool):
                 logger.info(f"Found {len(results)} Serper results for '{query}'")
                 return results
 
+        except asyncio.TimeoutError:
+            logger.error(f"Serper search timed out after 8.0s for query '{query}'")
+            return []  # Return empty list on timeout
         except aiohttp.ClientResponseError as e:
             # Log specific details for ClientResponseError
             error_body = await e.response.text() if hasattr(e, 'response') else "No response body"

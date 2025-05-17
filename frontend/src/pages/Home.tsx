@@ -1,9 +1,9 @@
 // Home component - Main page containing search functionality
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Box, VStack, Tabs, TabList, Tab, TabPanels, TabPanel, Text, Skeleton, Container, useBreakpointValue, Flex, Badge, HStack, Heading, Button, useColorModeValue, Icon, IconButton } from '@chakra-ui/react';
+import { Box, VStack, Tabs, TabList, Tab, TabPanels, TabPanel, Text, Skeleton, Container, useBreakpointValue, Flex, Badge, HStack, Heading, Button, useColorModeValue, Icon, IconButton, ButtonGroup } from '@chakra-ui/react';
 import { SearchIcon, InfoIcon, AddIcon, RepeatIcon } from '@chakra-ui/icons';
-import { FiMessageCircle } from 'react-icons/fi';
-import { useSearch } from 'context/SearchContext';
+import { FiMessageCircle, FiBriefcase, FiSearch } from 'react-icons/fi';
+import { useSearchContext } from 'context/SearchContext';
 import SearchInput from 'components/search/SearchInput';
 import ResultSection from 'components/search/ResultSection';
 import SourcesPanel from 'components/search/SourcesPanel';
@@ -14,12 +14,13 @@ import ResultPreview from 'components/search/ResultPreview';
 import { motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import ErrorRetry from 'components/search/ErrorRetry';
+import { SearchThreadItem as SearchThreadItemType } from 'context/SearchContext';
 
 const MotionBox = motion(Box);
 
 // Reusable Search Thread Item Component
 const SearchThreadItem = React.memo(({ item, isLatest, itemRef, onRelatedSearch }: { 
-  item: any, 
+  item: SearchThreadItemType, 
   isLatest: boolean, 
   itemRef: React.RefObject<HTMLDivElement> | undefined,
   onRelatedSearch: (query: string) => void
@@ -27,7 +28,7 @@ const SearchThreadItem = React.memo(({ item, isLatest, itemRef, onRelatedSearch 
   const isMobile = useBreakpointValue({ base: true, md: false });
   const itemIsLoading = item.isLoading;
   const itemHasError = item.isError;
-  const { isConversationMode, performSearch } = useSearch();
+  const { isConversationMode, performSearch } = useSearchContext();
 
   // Debug log
   React.useEffect(() => {
@@ -279,12 +280,23 @@ const Home: React.FC = () => {
   const { 
     searchThread, 
     performSearch, 
+    performAgenticSearch,
     isLoading,
     sessionId,
     clearSession,
     isConversationMode,
-    setConversationMode
-  } = useSearch();
+    setConversationMode,
+    agenticSearchMode,
+    setAgenticSearchMode,
+    conversationContext
+  } = useSearchContext();
+  
+  // Hoisted color values for initial view toggles
+  const initialViewButtonActiveBg = useColorModeValue("blue.50", "blue.800");
+  const initialViewButtonActiveColor = useColorModeValue("blue.600", "blue.200");
+  const initialViewResearchIconColorValue = useColorModeValue("blue.600", "blue.200");
+  // Conditionally set icon color based on agenticSearchMode AFTER fetching the active color
+  const initialViewResearchIconColor = agenticSearchMode ? initialViewResearchIconColorValue : "currentColor";
   
   const lastSearchItemRef = useRef<HTMLDivElement>(null);
   const threadContainerRef = useRef<HTMLDivElement>(null);
@@ -317,15 +329,23 @@ const Home: React.FC = () => {
     if (!searchQuery.trim()) return;
 
     // Execute search with session continuity
-    performSearch(searchQuery, {
-      sessionId: sessionId || undefined,
-      modalities: ["text", "images"],
-      useEnhancement: true
-    });
+    if (agenticSearchMode) {
+      performAgenticSearch(searchQuery, {
+        sessionId: sessionId || undefined,
+        maxIterations: 5,
+        previousContext: isConversationMode && searchThread.length > 0 ? conversationContext : undefined
+      });
+    } else {
+      performSearch(searchQuery, {
+        sessionId: sessionId || undefined,
+        modalities: ["text", "images"],
+        useEnhancement: true
+      });
+    }
     
     // Scroll to bottom after a short delay
     setTimeout(() => scrollToLatestSearch(50), 100);
-  }, [performSearch, sessionId]);
+  }, [performSearch, performAgenticSearch, sessionId, agenticSearchMode, isConversationMode, searchThread.length, conversationContext]);
 
   // Handle related search queries
   const handleRelatedSearch = useCallback((searchQuery: string) => {
@@ -340,6 +360,12 @@ const Home: React.FC = () => {
     // Scroll to top after resetting
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [clearSession, setConversationMode]);
+
+  // Toggle agentic mode - will be used by new buttons
+  const toggleAgenticMode = useCallback(() => {
+    console.log('Toggling agentic mode. Current mode before toggle:', agenticSearchMode);
+    setAgenticSearchMode(!agenticSearchMode);
+  }, [agenticSearchMode, setAgenticSearchMode]);
 
   // Automatically scroll to latest search when a new one is added
   useEffect(() => {
@@ -454,6 +480,29 @@ const Home: React.FC = () => {
               >
                 AI Search Engine
               </Text>
+              
+              {/* Agentic Mode Toggle Buttons for Mobile Initial View */}
+              <ButtonGroup size="sm" isAttached variant="outline" mt={6} width="calc(100% - 40px)" maxWidth="300px">
+                <Button 
+                  leftIcon={<Icon as={FiSearch} />}
+                  onClick={() => setAgenticSearchMode(false)} 
+                  isActive={!agenticSearchMode}
+                  flex="1"
+                  mr="-px"
+                  _active={{ bg: initialViewButtonActiveBg, color: initialViewButtonActiveColor }}
+                >
+                  Standard
+                </Button>
+                <Button 
+                  leftIcon={<Icon as={FiBriefcase} color={initialViewResearchIconColor} />}
+                  onClick={() => setAgenticSearchMode(true)} 
+                  isActive={agenticSearchMode}
+                  flex="1"
+                  _active={{ bg: initialViewButtonActiveBg, color: initialViewButtonActiveColor }}
+                >
+                  Research
+                </Button>
+              </ButtonGroup>
             </MotionBox>
           </Flex>
 
@@ -467,7 +516,7 @@ const Home: React.FC = () => {
           >
             <SearchInput
               onSearch={handleSearch}
-              placeholder="Ask anything..."
+              placeholder={agenticSearchMode ? "Ask for in-depth research..." : "Ask anything..."}
               autoFocus
               isMobileLayout={true}
             />
@@ -512,6 +561,28 @@ const Home: React.FC = () => {
               >
                 Agentic AI Search Engine
               </Text>
+
+              {/* Agentic Mode Toggle Buttons for Desktop Initial View */}
+              <ButtonGroup variant="outline" mt={8} size="md" isAttached>
+                <Button 
+                  leftIcon={<Icon as={FiSearch} />}
+                  onClick={() => setAgenticSearchMode(false)} 
+                  isActive={!agenticSearchMode}
+                  _active={{ bg: initialViewButtonActiveBg, color: initialViewButtonActiveColor }}
+                  px={6}
+                >
+                  Standard Search
+                </Button>
+                <Button 
+                  leftIcon={<Icon as={FiBriefcase} color={initialViewResearchIconColor} />}
+                  onClick={() => setAgenticSearchMode(true)} 
+                  isActive={agenticSearchMode}
+                  _active={{ bg: initialViewButtonActiveBg, color: initialViewButtonActiveColor }}
+                  px={6}
+                >
+                  Deep Research
+                </Button>
+              </ButtonGroup>
             </MotionBox>
 
             {/* Search Bar with Enhanced Animation */}
@@ -536,7 +607,7 @@ const Home: React.FC = () => {
               >
                 <SearchInput
                   onSearch={handleSearch}
-                  placeholder="Ask anything..."
+                  placeholder={agenticSearchMode ? "Ask for in-depth research..." : "Ask anything..."}
                   size="lg"
                   autoFocus
                   variant="unstyled"
@@ -562,10 +633,10 @@ const Home: React.FC = () => {
               </HStack>
               <Flex flexWrap="wrap" justifyContent="center" gap={3} mt={4}>
                 {[
-                  "Who is Bill Gates and what's his latest work?",
-                  "Show me images of SpaceX rockets",
-                  "Latest AI research breakthroughs",
-                  "Climate change solutions explained"
+                  agenticSearchMode ? "What happened to Bill Gates and Jeffrey Epstein?" : "Who is Bill Gates and what's his latest work?",
+                  agenticSearchMode ? "Compare Tesla and SpaceX business strategies" : "Show me images of SpaceX rockets",
+                  agenticSearchMode ? "How are quantum computers improving AI?" : "Latest AI research breakthroughs",
+                  agenticSearchMode ? "What solutions to climate change are most promising?" : "Climate change solutions explained"
                 ].map((suggestion, idx) => (
                   <Box
                     key={idx}
@@ -608,37 +679,30 @@ const Home: React.FC = () => {
           bg="white"
           borderBottomWidth="1px"
           borderBottomColor="gray.200"
-          justify="center"
+          justify="space-between"
           align="center"
           px={4}
           zIndex={10}
           boxShadow="0 2px 5px rgba(0,0,0,0.05)"
         >
-          <Text 
-            fontWeight="bold" 
-            color="blue.600" 
-            fontSize="lg"
-            position="absolute"
-            left="50%"
-            transform="translateX(-50%)"
-            textAlign="center"
-          >
+          <Text fontWeight="bold" color="blue.600" fontSize="lg">
             Nexus
           </Text>
-          <Button
-            leftIcon={<AddIcon />}
-            size="sm"
-            colorScheme="blue"
-            variant="outline"
-            position="absolute"
-            right={4}
-            onClick={handleNewThread}
-            borderRadius="full"
-            boxShadow="sm"
-            px={3}
-          >
-            New
-          </Button>
+          
+          <Flex align="center">
+            <Button
+              leftIcon={<AddIcon />}
+              size="sm"
+              colorScheme="blue"
+              variant="outline"
+              onClick={handleNewThread}
+              borderRadius="full"
+              boxShadow="sm"
+              px={2}
+            >
+              New
+            </Button>
+          </Flex>
         </Flex>
 
         {/* Scrollable Thread Container - adjust padding to accommodate fixed elements */}
@@ -652,7 +716,7 @@ const Home: React.FC = () => {
           height="100vh"
         >
           <VStack spacing={4} align="stretch" w="100%">
-            {searchThread.map((item, index) => (
+            {searchThread.map((item, index: number) => (
               <SearchThreadItem
                 key={item.id}
                 item={item}
@@ -677,10 +741,45 @@ const Home: React.FC = () => {
   // Desktop Search Thread View 
   return (
     <Box position="relative" minH="100vh">
+      {/* Header with Nexus logo, and new thread button */}
+      <Flex
+        position="fixed"
+        top={0}
+        left={0}
+        right={0}
+        height="60px"
+        bg="white"
+        borderBottomWidth="1px"
+        borderBottomColor="gray.200"
+        justify="space-between"
+        align="center"
+        px={6}
+        zIndex={10}
+        boxShadow="0 2px 5px rgba(0,0,0,0.05)"
+      >
+        <Text fontWeight="bold" color="blue.600" fontSize="lg">
+          Nexus
+        </Text>
+        
+        <Flex align="center">
+          <Button
+            leftIcon={<AddIcon />}
+            size="sm"
+            colorScheme="blue"
+            variant="outline"
+            onClick={handleNewThread}
+            borderRadius="full"
+            boxShadow="sm"
+          >
+            New Thread
+          </Button>
+        </Flex>
+      </Flex>
+
       {/* Scrollable Thread Container */}
       <Box 
         ref={threadContainerRef} 
-        pt={isConversationMode ? 2 : 8} 
+        pt="70px"
         pb={{ base: "140px", md: "120px" }}
         px={{ base: 2, md: 4, lg: 2 }} 
         maxW={{ base: "100%", xl: "85%" }}
@@ -688,7 +787,7 @@ const Home: React.FC = () => {
         overflowY="auto"
       >
         <VStack spacing={0} align="stretch" w="100%">
-          {searchThread.map((item, index) => (
+          {searchThread.map((item, index: number) => (
             <SearchThreadItem
               key={item.id}
               item={item}
@@ -701,23 +800,26 @@ const Home: React.FC = () => {
       </Box>
 
       {/* Floating follow-up search */}
-      <Box
+      <Container
         position="fixed"
         bottom={{ base: "70px", md: "30px" }}
-        left={isMobile ? "50%" : "calc(50% + 125px)"}
-        transform="translateX(-50%)"
-        width={{ base: "calc(100% - 32px)", md: "900px" }}
-        maxW={{ base: "calc(100% - 32px)", sm: "450px", md: "900px" }}
-        px={{ base: 2, md: 6 }}
+        left={{ base: 0, md: "240px" }}
+        right={0}
+        maxW="container.lg"
+        px={{ base: 2, md: 0 }}
         zIndex={999}
         style={{ pointerEvents: "none" }}
       >
         <Box 
-          width="100%" 
           style={{ pointerEvents: "auto" }}
           borderRadius="xl"
-          boxShadow="0 8px 32px rgba(0,0,0,0.12)"
+          boxShadow="lg"
+          borderWidth="1px"
+          borderColor="gray.200"
           bg="white"
+          maxW="900px"
+          mx="auto"
+          width="100%"
         >
           <FollowUpSearch 
             onSearch={handleSearch} 
@@ -726,7 +828,7 @@ const Home: React.FC = () => {
             onNewThread={handleNewThread}
           />
         </Box>
-      </Box>
+      </Container>
     </Box>
   );
 };

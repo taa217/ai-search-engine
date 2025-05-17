@@ -26,6 +26,7 @@ GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID", "")
 
 # LLM Configuration
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-large")
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.0"))
 MAX_TOKENS = int(os.getenv("MAX_TOKENS", "2048"))

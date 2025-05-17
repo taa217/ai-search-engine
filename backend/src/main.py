@@ -5,13 +5,16 @@ A state-of-the-art agentic search engine built with FastAPI and LangChain
 import os
 import time
 import asyncio
-from typing import Dict, List, Any, Optional
+import json
+import logging
+from typing import Dict, List, Any, Optional, Union
 from uuid import uuid4
+from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException, Request, Depends, UploadFile, File, Form, Body, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
@@ -21,9 +24,10 @@ load_dotenv()
 # Import the agentic search engine and config
 from .agents.search_agent import SearchAgent, SearchQuery, SearchSession
 from .config import settings
+from .util.agentic_search_engine import AgenticSearchEngine
+from .util.logger import setup_logger
 
 # Setup logging
-from .util.logger import setup_logger
 logger = setup_logger(__name__)
 
 # Initialize FastAPI app
@@ -45,6 +49,17 @@ app.add_middleware(
 # We'll initialize search engine in startup event for proper async handling
 search_engine = None
 
+# Initialize search agent
+search_agent = SearchAgent(model_provider=settings.LLM_PROVIDER, model_name=settings.LLM_MODEL)
+
+# Initialize agentic search engine
+agentic_search_engine = AgenticSearchEngine(
+    model_name=settings.LLM_MODEL,
+    model_provider=settings.LLM_PROVIDER,
+    max_iterations=5,
+    verbose=settings.DEBUG
+)
+
 # API Models
 class SearchRequest(BaseModel):
     query: str = Field(..., description="Search query")
@@ -65,6 +80,24 @@ class SearchResponse(BaseModel):
     related_searches: Optional[List[str]] = Field([], description="AI-generated related searches")
     has_images: Optional[bool] = Field(False, description="Whether image results are available")
     has_videos: Optional[bool] = Field(False, description="Whether video results are available")
+
+class AgenticSearchRequest(BaseModel):
+    query: str
+    session_id: Optional[str] = None
+    plan_id: Optional[str] = None
+    max_iterations: Optional[int] = 5
+    conversation_context: Optional[str] = None
+    conversation_mode: Optional[bool] = False
+
+class AgenticSearchResponse(BaseModel):
+    plan_id: str
+    original_query: str
+    research_steps: List[Dict[str, Any]]
+    synthesis: str
+    status: str  # "initiated", "in_progress", "completed", "error"
+    iterations_completed: int
+    max_iterations: int
+    conversation_context: Optional[str] = None
 
 @app.on_event("startup")
 async def startup_event():
@@ -199,6 +232,97 @@ async def delete_session(session_id: str):
         
     del search_engine.sessions[session_id]
     return {"status": "success", "message": f"Session {session_id} deleted"}
+
+@app.post("/search", response_model=SearchResponse)
+async def search_post(request: SearchRequest):
+    """
+    Execute a search query and return results.
+    
+    - query: The search query
+    - session_id: Optional session ID for continuity
+    - modalities: List of modalities to search (text, images, videos)
+    - use_enhancement: Whether to enhance the query
+    """
+    try:
+        response = await search_agent.execute_search(
+            query=request.query,
+            session_id=request.session_id,
+            max_results=10,
+            modalities=request.modalities,
+            use_enhancement=request.use_enhancement
+        )
+        
+        return response
+    except Exception as e:
+        logger.error(f"Search error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+
+@app.post("/agentic-search", response_model=AgenticSearchResponse)
+async def agentic_search(request: AgenticSearchRequest):
+    """
+    Execute an agentic search that conducts multiple searches and synthesizes results.
+    
+    - query: The search query
+    - session_id: Optional session ID for continuity
+    - plan_id: Optional plan ID to continue an existing research plan
+    - max_iterations: Maximum number of research iterations (default: 5)
+    - conversation_context: Optional previous conversation context for follow-up questions
+    - conversation_mode: Whether to use conversation mode for context-aware responses
+    """
+    try:
+        # Override max_iterations if provided
+        if request.max_iterations:
+            agentic_search_engine.max_iterations = request.max_iterations
+            
+        # Process the query with context if in conversation mode
+        processed_query = request.query
+        if request.conversation_mode and request.conversation_context:
+            # Log that we're using conversation context
+            logger.info(f"Using conversation context for agentic search: Session={request.session_id}")
+            
+            # Process query with context
+            processed_query = f"Previous context:\n{request.conversation_context}\n\nFollow-up question: {request.query}"
+            
+        # Execute the research process with the processed query
+        research_response = await agentic_search_engine.execute_research(
+            query=processed_query,
+            plan_id=request.plan_id,
+            session_id=request.session_id
+        )
+        
+        # Ensure response has all required fields
+        response = AgenticSearchResponse(
+            plan_id=research_response["plan_id"],
+            original_query=research_response["original_query"],
+            research_steps=research_response["research_steps"],
+            synthesis=research_response["synthesis"],
+            status=research_response["status"],
+            iterations_completed=research_response["iterations_completed"],
+            max_iterations=research_response["max_iterations"],
+            conversation_context=request.conversation_context if request.conversation_mode else None
+        )
+        
+        return response
+    except Exception as e:
+        logger.error(f"Agentic search error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Agentic search error: {str(e)}")
+
+@app.get("/research-plan/{plan_id}")
+async def get_research_plan(plan_id: str):
+    """
+    Get the current status and results of a research plan.
+    
+    - plan_id: The ID of the research plan
+    """
+    try:
+        plan = await agentic_search_engine.get_research_plan(plan_id)
+        if not plan:
+            raise HTTPException(status_code=404, detail=f"Research plan {plan_id} not found")
+        
+        return plan
+    except Exception as e:
+        logger.error(f"Error retrieving research plan: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving research plan: {str(e)}")
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))

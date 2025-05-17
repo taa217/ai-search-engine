@@ -53,7 +53,7 @@ MODEL_PROVIDERS = {
         "models": ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"]
     },
     "google": {
-        "default": "gemini-1.5-flash",
+        "default": "gemini-2.5-flash-preview-04-17",
         "models": ["gemini-1.5-flash", "gemini-2.5-flash-preview-04-17"]
     },
     "anthropic": {
