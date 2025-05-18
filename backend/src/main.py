@@ -98,6 +98,7 @@ class AgenticSearchResponse(BaseModel):
     iterations_completed: int
     max_iterations: int
     conversation_context: Optional[str] = None
+    sources: Optional[List[Dict[str, Any]]] = Field([], description="Source information")
 
 @app.on_event("startup")
 async def startup_event():
@@ -299,7 +300,8 @@ async def agentic_search(request: AgenticSearchRequest):
             status=research_response["status"],
             iterations_completed=research_response["iterations_completed"],
             max_iterations=research_response["max_iterations"],
-            conversation_context=request.conversation_context if request.conversation_mode else None
+            conversation_context=request.conversation_context if request.conversation_mode else None,
+            sources=research_response.get("sources", [])  # Include sources in response
         )
         
         return response

@@ -40,6 +40,7 @@ class ResearchStep:
         self.query = query
         self.reasoning = reasoning
         self.results = []
+        self.sources = []  # Add sources field to store references
         self.timestamp = datetime.now()
         self.execution_time = 0
         
@@ -50,6 +51,7 @@ class ResearchStep:
             "query": self.query,
             "reasoning": self.reasoning,
             "results_count": len(self.results),
+            "sources_count": len(self.sources),  # Add source count
             "timestamp": self.timestamp.isoformat(),
             "execution_time": self.execution_time
         }
@@ -82,8 +84,23 @@ class ResearchPlan:
             "updated_at": self.updated_at.isoformat(),
             "synthesis": self.synthesis,
             "final_answer": self.final_answer,
-            "status": self.status
+            "status": self.status,
+            "sources": self.get_all_sources()  # Include all sources
         }
+        
+    def get_all_sources(self) -> List[Dict[str, Any]]:
+        """Get all unique sources from all steps"""
+        all_sources = []
+        seen_urls = set()
+        
+        for step in self.steps:
+            for source in step.sources:
+                source_url = source.get("url", "")
+                if source_url and source_url not in seen_urls:
+                    seen_urls.add(source_url)
+                    all_sources.append(source)
+        
+        return all_sources
 
 class AgenticSearchEngine:
     """
@@ -179,11 +196,23 @@ class AgenticSearchEngine:
             weight=0.9
         )
     
-    async def _execute_search(self, query: str) -> Tuple[List[Dict[str, Any]], Set[str]]:
+    async def _execute_search(self, query: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """Execute search and return results and sources"""
         response = await self.search_executor.execute_prioritized_search(query)
         results = response.get("results", [])
-        sources = set(response.get("sources", []))
+        
+        # Process sources to match format expected by frontend
+        sources = []
+        for source in response.get("results", []):
+            if "url" in source and "title" in source:
+                sources.append({
+                    "title": source.get("title", "No title"),
+                    "url": source.get("url", ""),
+                    "snippet": source.get("snippet", source.get("content", "")),
+                    "source": source.get("source", "web search"),
+                    "isRelevant": True
+                })
+        
         return results, sources
     
     async def _plan_initial_research(self, query: str, conversation_context: Optional[str] = None) -> Dict[str, Any]:
@@ -355,7 +384,8 @@ What are the next steps for this research, keeping the conversation context (if 
         
         # Prepare results context (limit to avoid token overflow)
         results_context = "Information gathered from searches:\n\n"
-        unique_sources = set()
+        unique_sources = []
+        seen_urls = set()
         
         for i, result in enumerate(all_results[:20]):  # Limit to 20 most relevant results
             title = result.get('title', 'No title')
@@ -363,11 +393,18 @@ What are the next steps for this research, keeping the conversation context (if 
             content = result.get('snippet', result.get('content', 'No content'))
             
             # Avoid duplicate sources
-            if url in unique_sources:
+            if url in seen_urls:
                 continue
                 
-            unique_sources.add(url)
-            results_context += f"[Source {i+1}] {title}\nURL: {url}\n\n"
+            seen_urls.add(url)
+            # Track source with index for citations
+            unique_sources.append({
+                "index": len(unique_sources) + 1,
+                "title": title,
+                "url": url,
+                "content": content
+            })
+            results_context += f"[Source {len(unique_sources)}] {title}\nURL: {url}\n\n"
             results_context += f"{content[:300]}...\n\n"
         
         context_prompt_addition = ""
@@ -390,10 +427,13 @@ create a detailed, accurate, and well-structured report that thoroughly answers 
 Your report should:
 1. Be comprehensive and cover all important aspects of the topic
 2. Synthesize information from multiple sources into a coherent whole
-3. Clearly cite sources when presenting specific facts or claims
+3. Clearly cite sources when presenting specific facts or claims using citation format [1], [2], etc.
 4. Acknowledge limitations or areas of uncertainty
 5. Present a balanced view that considers multiple perspectives
 6. Be well-organized with logical sections and flow
+
+When including facts or data from a specific source, cite it using numbered citation format [1], [2], etc.
+The source numbers correspond to the source indices provided in the information section.
 
 Format your response as a comprehensive research report with sections,
 not just a simple answer.
@@ -409,7 +449,12 @@ Research process for this task:
 
 {results_context}
 
-Please synthesize all this information into a comprehensive report that thoroughly answers the original query for this task, taking into account the full conversation context (if provided).
+Available sources for citation (use these numbers when citing):
+{', '.join([f"[{s['index']}] {s['title']}" for s in unique_sources])}
+
+Please synthesize all this information into a comprehensive report that thoroughly answers the original query for this task,
+using appropriate citations [1], [2], etc. when referencing specific information from sources.
+Take into account the full conversation context (if provided).
 """
         human_message = HumanMessage(content=human_message_content)
          
@@ -464,6 +509,7 @@ Please synthesize all this information into a comprehensive report that thorough
                     results, sources = await self._execute_search(first_query)
                     first_step.execution_time = time.time() - start_time
                     first_step.results = results
+                    first_step.sources = sources  # Save sources
                     
                     # Add to plan
                     plan.add_step(first_step)
@@ -480,6 +526,7 @@ Please synthesize all this information into a comprehensive report that thorough
                     results, sources = await self._execute_search(query)
                     first_step.execution_time = time.time() - start_time
                     first_step.results = results
+                    first_step.sources = sources  # Save sources
                     
                     # Add to plan
                     plan.add_step(first_step)
@@ -526,6 +573,7 @@ Please synthesize all this information into a comprehensive report that thorough
                 results, sources = await self._execute_search(next_query)
                 next_step.execution_time = time.time() - start_time
                 next_step.results = results
+                next_step.sources = sources  # Save sources
                 
                 # Add to plan
                 plan.add_step(next_step)
@@ -540,6 +588,9 @@ Please synthesize all this information into a comprehensive report that thorough
             plan.synthesis = await self._synthesize_research(plan, conversation_context)
             plan.status = "completed"
             
+            # Get all sources from the plan
+            all_sources = plan.get_all_sources()
+            
             # Create response
             response = {
                 "plan_id": plan.id,
@@ -548,7 +599,8 @@ Please synthesize all this information into a comprehensive report that thorough
                 "synthesis": plan.synthesis,
                 "status": plan.status,
                 "iterations_completed": len(plan.steps),
-                "max_iterations": self.max_iterations
+                "max_iterations": self.max_iterations,
+                "sources": all_sources  # Include all sources using our method
             }
             
             return response
@@ -568,7 +620,8 @@ Please synthesize all this information into a comprehensive report that thorough
                 "status": "error",
                 "error": str(e),
                 "iterations_completed": len(plan.steps),
-                "max_iterations": self.max_iterations
+                "max_iterations": self.max_iterations,
+                "sources": plan.get_all_sources()  # Include any sources we did gather
             }
     
     async def get_research_plan(self, plan_id: str) -> Optional[Dict[str, Any]]:

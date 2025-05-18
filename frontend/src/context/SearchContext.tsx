@@ -70,6 +70,7 @@ export interface AgenticSearchResponse {
   max_iterations: number;
   error?: string;
   conversation_context?: string;
+  sources?: Source[]; // Add sources field to match backend response
 }
 
 export interface SearchResponse {
@@ -101,6 +102,7 @@ export interface SearchThreadItem {
   videoResults: VideoResult[];
   hasImages: boolean;
   hasVideos: boolean;
+  isLoadingImages?: boolean; // Flag to indicate images are still loading
   relatedSearches?: string[];
 }
 
@@ -436,6 +438,15 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
         thought: `${step.query} - ${step.reasoning}`
       }));
       
+      // Process sources if available
+      const sourcesWithImages = (response.data.sources || []).map(source => {
+        return {
+          ...source,
+          imageUrl: source.imageUrl || `https://via.placeholder.com/300x200/E0E0E0/AAAAAA?text=${encodeURIComponent(source.title || 'Source Image')}`,
+          isRelevant: true
+        };
+      });
+      
       // Update the search thread item with results
       setSearchThread(prev => {
         const updatedThread = [...prev];
@@ -446,6 +457,7 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
             ...updatedThread[loadingItemIndex],
             results: [formattedResult],
             reasoning: formattedReasoning,
+            sources: sourcesWithImages, // Use processed sources
             isLoading: false,
             isError: false,
             // We don't have image results yet in agentic search
@@ -466,6 +478,9 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
           query: searchTerm
         });
       }
+      
+      // Update global sources state with the agentic search sources
+      setSources(sourcesWithImages);
       
       // Track session ID
       if (response.data.plan_id) {
@@ -546,6 +561,7 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
         videoResults: [],
         hasImages: false,
         hasVideos: false,
+        isLoadingImages: true, // Start with images loading
         relatedSearches: []
       };
 
@@ -558,14 +574,15 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
       // Add to session history
       setSessionHistory(prev => [...prev, searchTerm]);
 
-      // Connect to the backend API with enhanced options
-      const response = await axios.post<SearchResponse>(`${API_BASE_URL}/api/search`, {
+      // Split the request into two parts: text first, then images
+      // 1. Initial request for text results
+      const initialResponse = await axios.post<SearchResponse>(`${API_BASE_URL}/api/search`, {
         query: searchTerm,
         max_results: options.maxResults || 5,
         use_web: options.useWeb !== undefined ? options.useWeb : true,
         depth: options.depth || 2,
         session_id: options.sessionId || sessionId,
-        modalities: options.modalities || ["text", "images"],
+        modalities: ["text"], // Only request text first
         use_enhancement: options.useEnhancement !== undefined ? options.useEnhancement : true,
         model_provider: options.modelProvider,
         model_name: options.modelName,
@@ -573,21 +590,20 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
       });
 
       // Save session ID from response
-      if (response.data.session_id) {
-        setSessionId(response.data.session_id);
+      if (initialResponse.data.session_id) {
+        setSessionId(initialResponse.data.session_id);
       }
 
-      // Process enhanced sources with images
-      const sourcesWithImages = response.data.sources.map(source => {
-        // Use actual image URLs when available
+      // Process initial sources
+      const initialSources = initialResponse.data.sources.map(source => {
         return {
           ...source,
           imageUrl: source.imageUrl || `https://via.placeholder.com/300x200/E0E0E0/AAAAAA?text=${encodeURIComponent(source.title || 'Source Image')}`,
-          isRelevant: true // Mark all backend sources as relevant
+          isRelevant: true
         };
       });
 
-      // Update the search thread item with results
+      // Update search thread with initial text results
       setSearchThread(prev => {
         const updatedThread = [...prev];
         const loadingItemIndex = updatedThread.findIndex(item => item.id === newSearchId);
@@ -595,47 +611,91 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
         if (loadingItemIndex !== -1) {
           updatedThread[loadingItemIndex] = {
             ...updatedThread[loadingItemIndex],
-            results: response.data.results,
-            sources: sourcesWithImages,
-            reasoning: response.data.reasoning,
+            results: initialResponse.data.results,
+            sources: initialSources,
+            reasoning: initialResponse.data.reasoning,
             isLoading: false,
             isError: false,
-            imageResults: response.data.image_results || [],
-            videoResults: response.data.video_results || [],
-            hasImages: response.data.has_images || false,
-            hasVideos: response.data.has_videos || false,
-            enhancedQuery: response.data.enhanced_query || searchTerm,
-            relatedSearches: response.data.related_searches || []
+            isLoadingImages: true, // Still loading images
+            enhancedQuery: initialResponse.data.enhanced_query || searchTerm,
+            relatedSearches: initialResponse.data.related_searches || []
           };
         }
         
         return updatedThread;
       });
 
-      // Update global state with search results
-      setResults(response.data.results);
-      setReasoning(response.data.reasoning);
-      setSources(sourcesWithImages);
-      setExecutionTime(response.data.execution_time);
+      // Update global state with initial results
+      setResults(initialResponse.data.results);
+      setReasoning(initialResponse.data.reasoning);
+      setSources(initialSources);
+      setExecutionTime(initialResponse.data.execution_time);
       setQuery(searchTerm);
-      setEnhancedQuery(response.data.enhanced_query || null);
-      setImageResults(response.data.image_results || []);
-      setVideoResults(response.data.video_results || []);
-      setHasImages(response.data.has_images || false);
-      setHasVideos(response.data.has_videos || false);
-      setRelatedSearches(response.data.related_searches || []);
-      
-      // Debug related searches from API
-      console.log('API related searches:', response.data.related_searches);
-      console.log('API response data:', {
-        hasRelatedSearches: !!response.data.related_searches && response.data.related_searches.length > 0,
-        relatedSearchesCount: response.data.related_searches ? response.data.related_searches.length : 0,
-        relatedSearchesSample: response.data.related_searches ? response.data.related_searches.slice(0, 2) : []
-      });
+      setEnhancedQuery(initialResponse.data.enhanced_query || null);
+      setRelatedSearches(initialResponse.data.related_searches || []);
       
       // Extract conversation context if available
-      if (response.data.conversation_context) {
-        setConversationContext(response.data.conversation_context);
+      if (initialResponse.data.conversation_context) {
+        setConversationContext(initialResponse.data.conversation_context);
+      }
+      
+      // 2. Second request for images (in parallel or after showing text results)
+      try {
+        const imageResponse = await axios.post<SearchResponse>(`${API_BASE_URL}/api/search`, {
+          query: searchTerm,
+          max_results: options.maxResults || 5,
+          use_web: true,
+          depth: options.depth || 2,
+          session_id: initialResponse.data.session_id || sessionId,
+          modalities: ["images"], // Only request images in this second call
+          use_enhancement: options.useEnhancement !== undefined ? options.useEnhancement : true,
+          model_provider: options.modelProvider,
+          model_name: options.modelName,
+          conversation_mode: isConversationMode
+        });
+        
+        // Update thread with image results
+        setSearchThread(prev => {
+          const updatedThread = [...prev];
+          const searchItemIndex = updatedThread.findIndex(item => item.id === newSearchId);
+          
+          if (searchItemIndex !== -1) {
+            updatedThread[searchItemIndex] = {
+              ...updatedThread[searchItemIndex],
+              imageResults: imageResponse.data.image_results || [],
+              videoResults: imageResponse.data.video_results || [],
+              hasImages: imageResponse.data.has_images || false,
+              hasVideos: imageResponse.data.has_videos || false,
+              isLoadingImages: false // Images are now loaded
+            };
+          }
+          
+          return updatedThread;
+        });
+        
+        // Update global state with image results
+        setImageResults(imageResponse.data.image_results || []);
+        setVideoResults(imageResponse.data.video_results || []);
+        setHasImages(imageResponse.data.has_images || false); 
+        setHasVideos(imageResponse.data.has_videos || false);
+        
+      } catch (imageError) {
+        console.error('Error fetching images:', imageError);
+        
+        // Mark images as failed loading but don't show an error message for the whole search
+        setSearchThread(prev => {
+          const updatedThread = [...prev];
+          const searchItemIndex = updatedThread.findIndex(item => item.id === newSearchId);
+          
+          if (searchItemIndex !== -1) {
+            updatedThread[searchItemIndex] = {
+              ...updatedThread[searchItemIndex],
+              isLoadingImages: false // No longer loading images (even though failed)
+            };
+          }
+          
+          return updatedThread;
+        });
       }
       
     } catch (error) {
@@ -672,7 +732,8 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
             ...updatedThread[loadingItemIndex],
             results: [{content: errorMessage, type: 'error'}],
             isLoading: false,
-            isError: true
+            isError: true,
+            isLoadingImages: false
           };
         }
         
