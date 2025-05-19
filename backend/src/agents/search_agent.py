@@ -445,7 +445,7 @@ class SearchAgent:
             contain sufficient information to answer the query, use that information primarily. 
             Only use the available TOOLS when you need additional information not present in the 
             initial search results.
-            YOUR REPLY SHOULD NOT BE SOMETHING LIKE "BASED ON SEARCH RESULTS...", But just the answer, in detail though. 
+            YOUR REPLY SHOULD NOT BE SOMETHING LIKE "BASED ON SEARCH RESULTS..." NOR SHOULD YOU MENTION SEARCH RESULTS, But just the answer, in detail though. 
              
            
             
