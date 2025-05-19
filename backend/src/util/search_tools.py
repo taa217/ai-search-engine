@@ -322,7 +322,7 @@ class SerpAPIVideoSearch(SearchTool):
     """Tool for searching videos using SerpAPI."""
 
     @retry(**SearchTool.RETRY_SETTINGS)
-    async def search(self, query: str, max_results: int = 5) -> List[Dict[str, Any]]:
+    async def search(self, query: str, max_results: int = 10) -> List[Dict[str, Any]]:
         """Search for videos related to the query using SerpAPI Google Videos."""
         if not settings.SERPAPI_API_KEY:
             logger.error("SERPAPI_API_KEY is not set in environment or settings.")
@@ -377,7 +377,7 @@ class SerperSearchTool(SearchTool):
     """Tool for searching the web using Serper.dev."""
 
     @retry(**SearchTool.RETRY_SETTINGS)
-    async def search(self, query: str, max_results: int = 5) -> List[Dict[str, Any]]:
+    async def search(self, query: str, max_results: int = 10) -> List[Dict[str, Any]]:
         """Perform a web search using Serper.dev."""
         if not settings.SERPER_API_KEY:
             logger.error("SERPER_API_KEY is not set in environment or settings.")

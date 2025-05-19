@@ -322,6 +322,9 @@ and identify new angles to explore.
 
 If sufficient information has been gathered, indicate that the research can be concluded.
 
+IMPORTANT: Your response must be a valid JSON object. Do not include any markdown formatting or code blocks.
+Do not wrap your JSON in ```json or ``` tags. Return ONLY the raw JSON object.
+
 Respond with a JSON object containing:
 {{
     "analysis": "deep analysis of current results and information gaps",
@@ -353,21 +356,48 @@ What are the next steps for this research, keeping the conversation context (if 
         response = await self.llm.ainvoke(messages)
         
         try:
-            analysis_dict = json.loads(response.content)
+            # Extract JSON content if wrapped in markdown code blocks
+            content = response.content.strip()
+            
+            # Check if JSON is wrapped in code blocks and extract it
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+                
+            # Handle any trailing commas in JSON objects or arrays which cause parsing errors
+            import re
+            content = re.sub(r',\s*}', '}', content)
+            content = re.sub(r',\s*\]', ']', content)
+            
+            # Fix any missing closing brackets/braces
+            open_braces = content.count('{')
+            close_braces = content.count('}')
+            if open_braces > close_braces:
+                content += '}' * (open_braces - close_braces)
+                
+            open_brackets = content.count('[')
+            close_brackets = content.count(']')
+            if open_brackets > close_brackets:
+                content += ']' * (open_brackets - close_brackets)
+            
+            # Now parse the cleaned JSON
+            analysis_dict = json.loads(content)
+            logger.info(f"Successfully parsed analysis JSON response")
             return analysis_dict
-        except json.JSONDecodeError:
-            # Handle case where LLM didn't return valid JSON
-            logger.error(f"LLM didn't return valid JSON for result analysis. Response: {response.content}")
+        except json.JSONDecodeError as e:
+            # Log the specific JSON error and content that failed parsing
+            logger.error(f"LLM didn't return valid JSON for result analysis. Error: {str(e)}, Response: {response.content[:200]}...")
             # Create a fallback analysis
             return {
                 "analysis": "Unable to parse results properly. Continuing with default approach.",
                 "information_sufficient": len(plan.steps) >= self.max_iterations,
                 "next_queries": [
-                    {"query": f"{plan.original_query} additional information", 
-                     "reasoning": "Gathering more information on the original query"}
+                    {"query": f"{plan.original_query} {len(plan.steps) + 1}th perspective", 
+                     "reasoning": f"Exploring another angle on the topic for iteration {len(plan.steps) + 1}"}
                 ],
                 "topics_to_synthesize": [plan.original_query],
-                "recommendation": "Continue with additional general searches"
+                "recommendation": "Continue with research from a different perspective"
             }
     
     async def _synthesize_research(self, plan: ResearchPlan, conversation_context: Optional[str] = None) -> str:

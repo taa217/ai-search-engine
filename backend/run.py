@@ -117,7 +117,7 @@ def main():
     print(f"\n{Fore.GREEN}🚀 Starting Nexus AI Search Engine on port {port}...{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}Press Ctrl+C to stop the server{Style.RESET_ALL}\n")
     # At the top near the MockSettings class
-    print(f"DEBUG - SERPAPI_API_KEY={os.getenv('SERPAPI_API_KEY')}")
+    
     
     # Start the server
     uvicorn.run(

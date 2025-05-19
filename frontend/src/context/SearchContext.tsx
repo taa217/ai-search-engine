@@ -578,7 +578,7 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
       // 1. Initial request for text results
       const initialResponse = await axios.post<SearchResponse>(`${API_BASE_URL}/api/search`, {
         query: searchTerm,
-        max_results: options.maxResults || 5,
+        max_results: options.maxResults || 10,
         use_web: options.useWeb !== undefined ? options.useWeb : true,
         depth: options.depth || 2,
         session_id: options.sessionId || sessionId,
