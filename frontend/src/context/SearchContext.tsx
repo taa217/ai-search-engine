@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, ReactNode, useCallback, use
 import axios from 'axios';
 
 // API base URL - update this to your actual API endpoint
-const API_BASE_URL = 'https://ai-search-engine-qli1.onrender.com'; //'http://localhost:8000'
+const API_BASE_URL = 'https://ai-search-engine-qli1.onrender.com' // 'http://localhost:8000' // 'https://ai-search-engine-qli1.onrender.com' //;
 
 // Types
 export interface SearchResult {
@@ -71,6 +71,7 @@ export interface AgenticSearchResponse {
   error?: string;
   conversation_context?: string;
   sources?: Source[]; // Add sources field to match backend response
+  related_searches?: string[]; // Add related_searches for agentic response
 }
 
 export interface SearchResponse {
@@ -412,6 +413,8 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
         conversation_mode: isConversationMode
       });
 
+      console.log('[SearchContext performAgenticSearch] Raw response.data from backend:', response.data);
+
       setAgenticSearch(response.data);
       setQuery(searchTerm);
 
@@ -428,10 +431,20 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
         imageUrl: source.imageUrl || `https://via.placeholder.com/300x200/E0E0E0/AAAAAA?text=${encodeURIComponent(source.title || 'Source Image')}`,
         isRelevant: true
       }));
+      const agenticRelatedSearches = response.data.related_searches || []; // Get related searches
 
       setSearchThread(prev => {
         const updatedThread = [...prev];
         const loadingItemIndex = updatedThread.findIndex(item => item.id === newSearchId);
+
+        console.log('[SearchContext performAgenticSearch INSIDE setSearchThread]:', {
+          newSearchId,
+          lookingForId: newSearchId, // Explicitly show what ID we are matching
+          foundIndex: loadingItemIndex,
+          agenticRelatedSearchesAtTimeToUpdate: agenticRelatedSearches, // Crucial: value of this variable here
+          responseDotDataDotRelatedSearches: response.data.related_searches, // Value from original response
+        });
+
         if (loadingItemIndex !== -1) {
           updatedThread[loadingItemIndex] = {
             ...updatedThread[loadingItemIndex],
@@ -440,6 +453,7 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
             sources: sourcesWithImages,
             isLoading: false,
             isError: false,
+            relatedSearches: agenticRelatedSearches, // Store related searches
             // isAgentic: true, // Already set on creation
           };
         }
@@ -450,6 +464,7 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
         setConversationContext(response.data.conversation_context);
       }
       setSources(sourcesWithImages);
+      setRelatedSearches(agenticRelatedSearches); // Also update global state if needed, though thread is primary
       if (response.data.plan_id) {
         console.log(`Research plan created: ${response.data.plan_id}`);
       }

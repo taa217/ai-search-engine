@@ -34,12 +34,26 @@ const SearchThreadItem = React.memo(({ item, isLatest, itemRef, onRelatedSearch 
   // Debug log
   React.useEffect(() => {
     if (isLatest && !itemIsLoading) {
-      console.log('Latest search item:', {
+      console.log('Latest search item (useEffect in Home.tsx):', {
         query: item.query,
+        isAgentic: item.isAgentic,
         hasRelatedSearches: item.relatedSearches && item.relatedSearches.length > 0,
         relatedSearches: item.relatedSearches
       });
     }
+
+    // --- BEGIN ADDED LOG for Agentic Item Props ---
+    if (item.isAgentic && !itemIsLoading) {
+      console.log('[Home.tsx SearchThreadItem] Agentic Item PROPS:', {
+        id: item.id,
+        query: item.query,
+        relatedSearches: item.relatedSearches,
+        relatedSearchesLength: item.relatedSearches ? item.relatedSearches.length : 'undefined',
+        itemObjectForAgentic: item // Log the whole item object for inspection
+      });
+    }
+    // --- END ADDED LOG for Agentic Item Props ---
+
   }, [isLatest, item, itemIsLoading]);
 
   // Get placeholder image URL

@@ -99,6 +99,7 @@ class AgenticSearchResponse(BaseModel):
     max_iterations: int
     conversation_context: Optional[str] = None
     sources: Optional[List[Dict[str, Any]]] = Field([], description="Source information")
+    related_searches: Optional[List[str]] = Field([], description="AI-generated related searches for agentic mode")
 
 @app.on_event("startup")
 async def startup_event():
@@ -301,7 +302,8 @@ async def agentic_search(request: AgenticSearchRequest):
             iterations_completed=research_response["iterations_completed"],
             max_iterations=research_response["max_iterations"],
             conversation_context=request.conversation_context if request.conversation_mode else None,
-            sources=research_response.get("sources", [])  # Include sources in response
+            sources=research_response.get("sources", []),  # Include sources in response
+            related_searches=research_response.get("related_searches", [])  # Include related searches in response
         )
         
         return response

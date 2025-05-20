@@ -451,7 +451,7 @@ class SearchAgent:
             
             For conversational messages, respond naturally WITHOUT using any search tools or looking up information.
             
-            When citing sources, provide specific attribution including the title and URL if available.
+            CITE SOURCES. When citing sources, provide specific attribution including the title and URL if available.
             
             If neither the search results nor the tools provide an answer, you may use your existing 
             knowledge but clearly indicate this to the user.

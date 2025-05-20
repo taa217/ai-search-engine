@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional, Set, Tuple
 import logging
 import os
+import re
 
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -492,6 +493,90 @@ Take into account the full conversation context (if provided).
         response = await self.llm.ainvoke(messages)
         return response.content
     
+    async def _generate_related_searches(self, query: str, synthesis: str, max_suggestions: int = 5) -> List[str]:
+        """
+        Generate related search suggestions based on the original query and research synthesis.
+        This is similar to the method in SearchAgent but adapted for AgenticSearchEngine.
+        """
+        try:
+            # Create a focused prompt for related searches based on synthesis
+            prompt = f"""
+            Based on the user's original research query: "{query}" and the following synthesized research report:
+            ---
+            {synthesis[:2000]} # Limit synthesis length to avoid overly long prompts
+            ---
+
+            Generate {max_suggestions} SPECIFIC and DIVERSE related search queries that a user might find helpful to explore next.
+            These queries should branch out from the main findings or explore related facets not fully covered in the report.
+            Avoid generic follow-ups like "more about {query}". Each query should be unique and insightful.
+
+            IMPORTANT: Format your response as a JSON array of strings containing ONLY the related search queries.
+            No explanations or additional text.
+
+            For example:
+            ["specific related query 1 based on synthesis", "another distinct query", "a third exploration path"]
+            """
+
+            logger.info(f"Generating related searches for agentic query: '{query}'")
+            response = await self.llm.ainvoke(prompt)
+            result_text = response.content.strip()
+            logger.info(f"Raw LLM response for agentic related searches: {result_text[:200]}...")
+
+            # Attempt to parse the entire response as JSON
+            try:
+                clean_text = result_text
+                if "```json" in result_text:
+                    clean_text = result_text.split("```json")[1].split("```")[0].strip()
+                elif "```" in result_text: # Handle cases with just ```
+                    parts = result_text.split("```")
+                    if len(parts) > 1:
+                        clean_text = parts[1].strip()
+                    else: # No closing ```, try to find JSON start
+                        json_start_index = result_text.find("[")
+                        if json_start_index != -1:
+                            clean_text = result_text[json_start_index:]
+
+
+                related_queries = json.loads(clean_text)
+                if isinstance(related_queries, list) and all(isinstance(q, str) for q in related_queries):
+                    logger.info(f"Successfully parsed JSON for agentic related searches: {related_queries}")
+                    return related_queries[:max_suggestions]
+            except json.JSONDecodeError as e:
+                logger.warning(f"JSON parsing failed for agentic related searches: {str(e)}. Attempting line-by-line extraction.")
+
+            # Fallback: Line-by-line extraction (similar to SearchAgent)
+            fallback_queries = []
+            lines = result_text.split('\\n') # Use escaped newline for splitting, as LLM might use it
+            if len(lines) == 1 and "\n" in result_text: # If escaped didn't work, try literal newline
+                lines = result_text.split('\n')
+
+            for line in lines:
+                line = line.strip()
+                if not line or line in ['[', ']', '{', '}', ','] or line.startswith('//') or line.startswith('#'):
+                    continue
+                
+                cleaned_line = re.sub(r'^\\d+[\.\)]\\s*', '', line.strip('"\'').rstrip(',')) # Remove numbering, quotes, commas
+                if cleaned_line and len(cleaned_line) > 3 and not cleaned_line.lower().startswith(("here", "example", "sure", "based on")):
+                    fallback_queries.append(cleaned_line)
+                    if len(fallback_queries) >= max_suggestions:
+                        break
+            
+            if fallback_queries:
+                logger.info(f"Extracted {len(fallback_queries)} agentic related searches using line-by-line method.")
+                return fallback_queries[:max_suggestions]
+
+            logger.warning(f"Could not extract structured related searches for agentic query: '{query}'. Returning empty list.")
+            return []
+
+        except Exception as e:
+            logger.error(f"Error generating agentic related searches for query '{query}': {str(e)}")
+            # Fallback to very generic suggestions if all else fails
+            return [
+                f"Explore deeper aspects of {query}",
+                f"Follow-up questions for {query} research",
+                f"Related topics to {query} synthesis"
+            ][:max_suggestions]
+    
     async def execute_research(self, 
                              query: str, 
                              plan_id: Optional[str] = None,
@@ -618,6 +703,10 @@ Take into account the full conversation context (if provided).
             plan.synthesis = await self._synthesize_research(plan, conversation_context)
             plan.status = "completed"
             
+            # Generate related searches based on the synthesis
+            related_searches = await self._generate_related_searches(plan.original_query, plan.synthesis)
+            logger.info(f"Generated related searches for plan {plan_id}: {related_searches}")
+
             # Get all sources from the plan
             all_sources = plan.get_all_sources()
             
@@ -630,7 +719,8 @@ Take into account the full conversation context (if provided).
                 "status": plan.status,
                 "iterations_completed": len(plan.steps),
                 "max_iterations": self.max_iterations,
-                "sources": all_sources  # Include all sources using our method
+                "sources": all_sources,  # Include all sources using our method
+                "related_searches": related_searches # Add related searches to the response
             }
             
             return response
@@ -651,7 +741,8 @@ Take into account the full conversation context (if provided).
                 "error": str(e),
                 "iterations_completed": len(plan.steps),
                 "max_iterations": self.max_iterations,
-                "sources": plan.get_all_sources()  # Include any sources we did gather
+                "sources": plan.get_all_sources(),  # Include any sources we did gather
+                "related_searches": [] # Empty list for errors
             }
     
     async def get_research_plan(self, plan_id: str) -> Optional[Dict[str, Any]]:
@@ -663,4 +754,4 @@ Take into account the full conversation context (if provided).
     
     async def close(self):
         """Close all resources"""
-        await self.search_executor.close() 
+        await self.search_executor.close()
