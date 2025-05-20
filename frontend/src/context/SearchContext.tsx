@@ -104,6 +104,7 @@ export interface SearchThreadItem {
   hasVideos: boolean;
   isLoadingImages?: boolean; // Flag to indicate images are still loading
   relatedSearches?: string[];
+  isAgentic?: boolean; // Flag to indicate if this was an agentic/deep search
 }
 
 interface SearchOptions {
@@ -285,7 +286,7 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
           hasImages: response.data.has_images || false,
           hasVideos: response.data.has_videos || false,
           enhancedQuery: response.data.enhanced_query || searchTerm,
-          relatedSearches: response.data.related_searches || []
+          relatedSearches: response.data.related_searches || [],
         };
         return updatedThread;
       });
@@ -334,12 +335,18 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
       // Update the search thread item with error
       setSearchThread(prev => {
         const updatedThread = [...prev];
-        updatedThread[searchItemIndex] = {
-          ...updatedThread[searchItemIndex],
-          results: [{content: errorMessage, type: 'error'}],
-          isLoading: false,
-          isError: true
-        };
+        const searchItemIndex = updatedThread.findIndex(item => item.id === searchId);
+        
+        if (searchItemIndex !== -1) {
+          updatedThread[searchItemIndex] = {
+            ...updatedThread[searchItemIndex],
+            results: [{content: errorMessage, type: 'error'}],
+            isLoading: false,
+            isError: true,
+            isLoadingImages: false
+          };
+        }
+        
         return updatedThread;
       });
       
@@ -351,15 +358,15 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
 
   const performAgenticSearch = async (searchQuery?: string, options: AgenticSearchOptions = {}) => {
     const searchTerm = searchQuery || query;
-    
+    let newSearchId: string = ''; // Declare newSearchId here
+
     if (!searchTerm.trim()) {
       setError('Please enter a search query');
       return;
     }
 
     try {
-      // Create a new search thread item in loading state, similar to standard search
-      const newSearchId = `agentic-search-${Date.now()}`;
+      newSearchId = `agentic-search-${Date.now()}`; // Assign newSearchId
       const newSearchItem: SearchThreadItem = {
         id: newSearchId,
         query: searchTerm,
@@ -373,44 +380,29 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
         videoResults: [],
         hasImages: false,
         hasVideos: false,
-        relatedSearches: []
+        relatedSearches: [],
+        isAgentic: true // Mark as agentic search
       };
 
-      // Add to thread history
       setSearchThread(prev => [...prev, newSearchItem]);
-      
       setIsLoading(true);
       setError(null);
       setAgenticSearch(null);
-
-      // Add to session history
       setSessionHistory(prev => [...prev, searchTerm]);
 
-      // Build context from previous searches if in conversation mode
       let previousContext = options.previousContext || '';
-      
-      // If this is a follow-up question, build context from previous searches
-      if (isConversationMode && searchThread.length > 0) {
-        // Get the last few search items for context
-        const contextItems = searchThread.slice(-3);
-        
-        // Format context items
-        const formattedContext = contextItems.map(item => 
-          `Query: ${item.query}\nAnswer: ${item.results[0]?.content || ''}`
-        ).join('\n\n');
-        
-        // Add to context
+      if (isConversationMode && searchThread.length > 1) { // Ensure there's a previous item for context
+        const contextItems = searchThread.slice(-4, -1); // Get up to 3 items before the current one
+        const formattedContext = contextItems.map(item =>
+          `Query: ${item.query}\\nAnswer: ${item.results[0]?.content || ''}`
+        ).join('\\n\\n');
         previousContext = formattedContext;
-        
-        // Debug log
         console.log('Applying conversation context to deep research:', {
           contextLength: previousContext.length,
-          searchThreadLength: searchThread.length,
           query: searchTerm
         });
       }
 
-      // Connect to the backend API for agentic search
       const response = await axios.post<AgenticSearchResponse>(`${API_BASE_URL}/agentic-search`, {
         query: searchTerm,
         session_id: options.sessionId || sessionId,
@@ -420,79 +412,51 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
         conversation_mode: isConversationMode
       });
 
-      // Store the agentic search response
       setAgenticSearch(response.data);
-      
-      // Set current query
       setQuery(searchTerm);
-      
-      // Format the agentic search result as a standard search result
+
       const formattedResult = {
         content: response.data.synthesis,
         type: 'text'
       };
-      
-      // Format research steps as reasoning steps
       const formattedReasoning = response.data.research_steps.map((step, index) => ({
         step: index + 1,
         thought: `${step.query} - ${step.reasoning}`
       }));
-      
-      // Process sources if available
-      const sourcesWithImages = (response.data.sources || []).map(source => {
-        return {
-          ...source,
-          imageUrl: source.imageUrl || `https://via.placeholder.com/300x200/E0E0E0/AAAAAA?text=${encodeURIComponent(source.title || 'Source Image')}`,
-          isRelevant: true
-        };
-      });
-      
-      // Update the search thread item with results
+      const sourcesWithImages = (response.data.sources || []).map(source => ({
+        ...source,
+        imageUrl: source.imageUrl || `https://via.placeholder.com/300x200/E0E0E0/AAAAAA?text=${encodeURIComponent(source.title || 'Source Image')}`,
+        isRelevant: true
+      }));
+
       setSearchThread(prev => {
         const updatedThread = [...prev];
         const loadingItemIndex = updatedThread.findIndex(item => item.id === newSearchId);
-        
         if (loadingItemIndex !== -1) {
           updatedThread[loadingItemIndex] = {
             ...updatedThread[loadingItemIndex],
             results: [formattedResult],
             reasoning: formattedReasoning,
-            sources: sourcesWithImages, // Use processed sources
+            sources: sourcesWithImages,
             isLoading: false,
             isError: false,
-            // We don't have image results yet in agentic search
-            relatedSearches: [] // We could generate related searches from the synthesis if needed
+            // isAgentic: true, // Already set on creation
           };
         }
-        
         return updatedThread;
       });
-      
-      // Store conversation context if available
+
       if (response.data.conversation_context) {
         setConversationContext(response.data.conversation_context);
-        
-        // Debug log
-        console.log('Received conversation context from deep research:', {
-          contextLength: response.data.conversation_context.length,
-          query: searchTerm
-        });
       }
-      
-      // Update global sources state with the agentic search sources
       setSources(sourcesWithImages);
-      
-      // Track session ID
       if (response.data.plan_id) {
-        // We could track plans here if needed
         console.log(`Research plan created: ${response.data.plan_id}`);
       }
-      
+
     } catch (error) {
       console.error('Agentic search error:', error);
-      
       let errorMessage = 'An unexpected error occurred during research';
-      
       if (axios.isAxiosError(error)) {
         if (error.code === 'ECONNABORTED') {
           errorMessage = 'Research request timed out. Please try again.';
@@ -508,24 +472,23 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
           errorMessage = 'No response from research server. Please check your connection and try again.';
         }
       }
-      
-      // Update the search thread item with error
+
       setSearchThread(prev => {
         const updatedThread = [...prev];
-        const loadingItemIndex = updatedThread.findIndex(item => item.isLoading);
-        
+        // newSearchId is now in scope
+        const loadingItemIndex = updatedThread.findIndex(item => item.id === newSearchId); 
         if (loadingItemIndex !== -1) {
           updatedThread[loadingItemIndex] = {
             ...updatedThread[loadingItemIndex],
-            results: [{content: errorMessage, type: 'error'}],
+            results: [{ content: errorMessage, type: 'error' }],
             isLoading: false,
-            isError: true
+            isError: true,
+            isLoadingImages: false, // Ensure this is reset
+            // isAgentic: true, // Already set on creation
           };
         }
-        
         return updatedThread;
       });
-      
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -562,7 +525,8 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
         hasImages: false,
         hasVideos: false,
         isLoadingImages: true, // Start with images loading
-        relatedSearches: []
+        relatedSearches: [],
+        isAgentic: false // Mark as standard search
       };
 
       // Add to thread history
@@ -618,7 +582,8 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
             isError: false,
             isLoadingImages: true, // Still loading images
             enhancedQuery: initialResponse.data.enhanced_query || searchTerm,
-            relatedSearches: initialResponse.data.related_searches || []
+            relatedSearches: initialResponse.data.related_searches || [],
+            isAgentic: false
           };
         }
         

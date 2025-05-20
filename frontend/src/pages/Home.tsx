@@ -15,6 +15,7 @@ import { motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import ErrorRetry from 'components/search/ErrorRetry';
 import { SearchThreadItem as SearchThreadItemType } from 'context/SearchContext';
+import AgenticSearchProgressDisplay from 'components/search/AgenticSearchProgressDisplay';
 
 const MotionBox = motion(Box);
 
@@ -179,11 +180,15 @@ const SearchThreadItem = React.memo(({ item, isLatest, itemRef, onRelatedSearch 
             <TabPanel px={0} pt={4}>
               {/* Loading or Results for the Answer tab */}
               {itemIsLoading ? (
-                <VStack spacing={4} align="stretch" py={4}>
-                  <Skeleton height="20px" width="90%" borderRadius="md" />
-                  <Skeleton height="20px" width="100%" borderRadius="md" />
-                  <Skeleton height="20px" width="95%" borderRadius="md" />
-                </VStack>
+                item.isAgentic ? (
+                  <AgenticSearchProgressDisplay originalQuery={item.query} />
+                ) : (
+                  <VStack spacing={4} align="stretch" py={4}>
+                    <Skeleton height="20px" width="90%" borderRadius="md" />
+                    <Skeleton height="20px" width="100%" borderRadius="md" />
+                    <Skeleton height="20px" width="95%" borderRadius="md" />
+                  </VStack>
+                )
               ) : (
                 <>
                   {/* Preview Images and Sources - placed here, just above the result text */}
@@ -762,17 +767,7 @@ const Home: React.FC = () => {
         </Text>
         
         <Flex align="center">
-          <Button
-            leftIcon={<AddIcon />}
-            size="sm"
-            colorScheme="blue"
-            variant="outline"
-            onClick={handleNewThread}
-            borderRadius="full"
-            boxShadow="sm"
-          >
-            New Thread
-          </Button>
+          
         </Flex>
       </Flex>
 
