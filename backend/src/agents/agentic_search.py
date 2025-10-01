@@ -54,7 +54,7 @@ MODEL_PROVIDERS = {
     },
     "google": {
         "default": "gemini-2.5-flash-preview-04-17",
-        "models": ["gemini-1.5-flash", "gemini-2.5-flash-preview-04-17"]
+        "models": ["gemini-2.0-flash-lite", "gemini-2.5-flash-preview-04-17"]
     },
     "anthropic": {
         "default": "claude-3-opus",
