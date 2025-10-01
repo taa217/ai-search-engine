@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     CLAUDE_API_KEY: Optional[str] = os.getenv("CLAUDE_API_KEY")
     GOOGLE_API_KEY: Optional[str] = os.getenv("GOOGLE_API_KEY")
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "google")  # Options: openai, google, anthropic
-    LLM_MODEL: str = os.getenv("LLM_MODEL", "gemini-2.5-flash-preview-04-17")
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "gemini-2.0-flash-lite")
     TEMPERATURE: float = float(os.getenv("TEMPERATURE", "0.2"))
     
     # Vector DB Settings
