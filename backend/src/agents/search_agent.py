@@ -186,8 +186,8 @@ class SearchAgent:
             "default": "gpt-4o"
         },
         "google": {
-            "models": ["gemini-2.5-flash-preview-04-17", "gemini-1.5-flash"],
-            "default": "gemini-2.5-flash-preview-04-17"
+            "models": ["gemini-2.0-flash-lite", "gemini-2.0-flash-lite"],
+            "default":"gemini-2.0-flash-lite"
         },
         "anthropic": {
             "models": ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"],
