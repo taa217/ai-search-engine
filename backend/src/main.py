@@ -111,7 +111,7 @@ async def startup_event():
     # Initialize the search engine
     search_engine = SearchAgent(
         model_provider=os.getenv("DEFAULT_MODEL_PROVIDER", "gemini").lower(),
-        model_name=os.getenv("DEFAULT_MODEL_NAME", "gemini-1.5-flash"),
+        model_name=os.getenv("DEFAULT_MODEL_NAME", "gemini-2.0-flash"),
         verbose=settings.DEBUG
     ) 
     
