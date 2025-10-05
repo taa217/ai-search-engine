@@ -254,7 +254,7 @@ class SearchAgent:
                 raise ImportError("Install 'langchain-google-genai' for Google Gemini support")
             model_choice = self.model_name or self.MODEL_PROVIDERS["google"]["default"]
             return ChatGoogleGenerativeAI(
-                model="gemini-1.5-flash",
+                model="gemini-2.0-flash",
                 temperature=settings.TEMPERATURE,
                 google_api_key=settings.GOOGLE_API_KEY
             )
