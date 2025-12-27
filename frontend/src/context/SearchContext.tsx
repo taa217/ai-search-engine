@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, ReactNode, useCallback, use
 import axios from 'axios';
 
 // API base URL - reads from environment variable, defaults to production
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://nexus-search-api.vercel.app';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 // Types
 export interface SearchResult {
