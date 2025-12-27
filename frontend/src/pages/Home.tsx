@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Box, VStack, Tabs, TabList, Tab, TabPanels, TabPanel, Text, Skeleton, Container, useBreakpointValue, Flex, Badge, HStack, Heading, Button, useColorModeValue, Icon, IconButton, ButtonGroup } from '@chakra-ui/react';
 import { SearchIcon, InfoIcon, AddIcon, RepeatIcon } from '@chakra-ui/icons';
-import { FiMessageCircle, FiBriefcase, FiSearch } from 'react-icons/fi';
+import { FiMessageCircle, FiBriefcase, FiSearch, FiCpu } from 'react-icons/fi';
 import { useSearchContext } from 'context/SearchContext';
 import SearchInput from 'components/search/SearchInput';
 import ResultSection from 'components/search/ResultSection';
@@ -20,9 +20,9 @@ import AgenticSearchProgressDisplay from 'components/search/AgenticSearchProgres
 const MotionBox = motion(Box);
 
 // Reusable Search Thread Item Component
-const SearchThreadItem = React.memo(({ item, isLatest, itemRef, onRelatedSearch }: { 
-  item: SearchThreadItemType, 
-  isLatest: boolean, 
+const SearchThreadItem = React.memo(({ item, isLatest, itemRef, onRelatedSearch }: {
+  item: SearchThreadItemType,
+  isLatest: boolean,
   itemRef: React.RefObject<HTMLDivElement> | undefined,
   onRelatedSearch: (query: string) => void
 }) => {
@@ -63,7 +63,7 @@ const SearchThreadItem = React.memo(({ item, isLatest, itemRef, onRelatedSearch 
 
   // Determine if we should show the preview section
   const shouldShowPreview = !itemIsLoading && item.sources && item.sources.length > 0;
-  
+
   // Sanitize image URL function (ensures valid URL format and handles CORS issues)
   const sanitizeImageUrl = (url: string): string => {
     if (!url) return '';
@@ -81,7 +81,7 @@ const SearchThreadItem = React.memo(({ item, isLatest, itemRef, onRelatedSearch 
       // Ensure we have a valid URL (use original or thumbnail)
       const imageUrl = sanitizeImageUrl(img.url || img.thumbnail || '');
       const thumbnailUrl = sanitizeImageUrl(img.thumbnail || img.url || '');
-      
+
       return {
         url: imageUrl,
         thumbnail: thumbnailUrl, // Include thumbnail URL separately
@@ -102,7 +102,7 @@ const SearchThreadItem = React.memo(({ item, isLatest, itemRef, onRelatedSearch 
         source: source.source || 'Web search'
       }))
   ];
-  
+
   // Show query enhancement notice if available
   const hasQueryEnhancement = item.enhancedQuery && item.enhancedQuery !== item.query;
 
@@ -126,10 +126,10 @@ const SearchThreadItem = React.memo(({ item, isLatest, itemRef, onRelatedSearch 
       width="100%"
     >
       {/* Query Display - style differently based on conversation mode */}
-      <Box 
-        pb={4} 
-        mb={4} 
-        borderBottom="1px" 
+      <Box
+        pb={4}
+        mb={4}
+        borderBottom="1px"
         borderColor="gray.200"
         borderRadius={isConversationMode ? "lg" : "none"}
         bg={isConversationMode ? "blue.50" : "transparent"}
@@ -148,7 +148,7 @@ const SearchThreadItem = React.memo(({ item, isLatest, itemRef, onRelatedSearch 
         <Text fontSize={{ base: "xl", md: "2xl" }} fontWeight="semibold" color="gray.800">
           {item.query}
         </Text>
-        
+
         {/* Enhanced Query Notice */}
         {hasQueryEnhancement && (
           <Flex align="center" mt={2}>
@@ -162,11 +162,11 @@ const SearchThreadItem = React.memo(({ item, isLatest, itemRef, onRelatedSearch 
 
       {/* Show error retry component if search failed */}
       {itemHasError && (
-        <ErrorRetry 
-          query={item.query} 
+        <ErrorRetry
+          query={item.query}
           searchId={item.id}
           errorMessage={
-            item.results?.[0]?.content || 
+            item.results?.[0]?.content ||
             "We couldn't complete your search at this time. Please try again."
           }
         />
@@ -193,15 +193,62 @@ const SearchThreadItem = React.memo(({ item, isLatest, itemRef, onRelatedSearch 
           <TabPanels>
             <TabPanel px={0} pt={4}>
               {/* Loading or Results for the Answer tab */}
-              {itemIsLoading ? (
+              {itemIsLoading && (!item.results || item.results.length === 0) ? (
                 item.isAgentic ? (
                   <AgenticSearchProgressDisplay originalQuery={item.query} />
                 ) : (
-                  <VStack spacing={4} align="stretch" py={4}>
-                    <Skeleton height="20px" width="90%" borderRadius="md" />
-                    <Skeleton height="20px" width="100%" borderRadius="md" />
-                    <Skeleton height="20px" width="95%" borderRadius="md" />
-                  </VStack>
+                  <Flex 
+                    direction="column" 
+                    align="center" 
+                    justify="center" 
+                    py={12} 
+                    px={4}
+                    bg="whiteAlpha.500"
+                    borderRadius="xl"
+                    backdropFilter="blur(5px)"
+                  >
+                    <Box
+                      as={motion.div}
+                      animate={{ 
+                        scale: [1, 1.1, 1],
+                        opacity: [0.7, 1, 0.7]
+                      }}
+                      // @ts-ignore - Framer motion types issue
+                      transition={{ 
+                        duration: 2, 
+                        repeat: Infinity,
+                        ease: "easeInOut" 
+                      }}
+                      mb={4}
+                      position="relative"
+                    >
+                      <Box
+                        position="absolute"
+                        top="50%"
+                        left="50%"
+                        transform="translate(-50%, -50%)"
+                        w="40px"
+                        h="40px"
+                        bg="blue.400"
+                        borderRadius="full"
+                        filter="blur(20px)"
+                        opacity={0.3}
+                      />
+                      <Icon as={FiCpu} w={10} h={10} color="blue.500" />
+                    </Box>
+                    <Text 
+                      fontSize="lg" 
+                      fontWeight="medium" 
+                      bgGradient="linear(to-r, blue.600, purple.600)"
+                      bgClip="text"
+                      animation="pulse 2s infinite"
+                    >
+                      Nexus is thinking...
+                    </Text>
+                    <Text fontSize="sm" color="gray.500" mt={2}>
+                      Searching the web and analyzing sources
+                    </Text>
+                  </Flex>
                 )
               ) : (
                 <>
@@ -214,13 +261,13 @@ const SearchThreadItem = React.memo(({ item, isLatest, itemRef, onRelatedSearch 
                       showSources={item.sources.length > 0}
                     />
                   )}
-                  
+
                   {/* Main Answer */}
                   {item.results && item.results.length > 0 ? (
                     item.results[0]?.type === 'error' ? (
                       <Box my={4}>
-                        <ErrorRetry 
-                          query={item.query} 
+                        <ErrorRetry
+                          query={item.query}
                           searchId={item.id}
                           onRetry={() => performSearch(item.query)}
                           errorMessage={item.results[0].content}
@@ -237,7 +284,7 @@ const SearchThreadItem = React.memo(({ item, isLatest, itemRef, onRelatedSearch 
                   ) : (
                     <Text color="gray.500" py={4}>No results found for this query.</Text>
                   )}
-                  
+
                   {/* Related Searches - always show for the latest search result */}
                   {isLatest && (
                     <Box mt={4}>
@@ -252,7 +299,7 @@ const SearchThreadItem = React.memo(({ item, isLatest, itemRef, onRelatedSearch 
                 </>
               )}
             </TabPanel>
-            
+
             {/* Images Tab - always render but conditionally show content */}
             <TabPanel px={0} pt={4}>
               {itemIsLoading ? (
@@ -271,7 +318,7 @@ const SearchThreadItem = React.memo(({ item, isLatest, itemRef, onRelatedSearch 
                 </Box>
               )}
             </TabPanel>
-            
+
             {/* Sources Tab */}
             <TabPanel px={0} pt={4}>
               {itemIsLoading ? (
@@ -294,11 +341,11 @@ const SearchThreadItem = React.memo(({ item, isLatest, itemRef, onRelatedSearch 
 const Home: React.FC = () => {
   // Get if mobile view is active via breakpoint
   const isMobile = useBreakpointValue({ base: true, md: false });
-  
+
   // Using search context
-  const { 
-    searchThread, 
-    performSearch, 
+  const {
+    searchThread,
+    performSearch,
     performAgenticSearch,
     isLoading,
     sessionId,
@@ -309,14 +356,14 @@ const Home: React.FC = () => {
     setAgenticSearchMode,
     conversationContext
   } = useSearchContext();
-  
+
   // Hoisted color values for initial view toggles
   const initialViewButtonActiveBg = useColorModeValue("blue.50", "blue.800");
   const initialViewButtonActiveColor = useColorModeValue("blue.600", "blue.200");
   const initialViewResearchIconColorValue = useColorModeValue("blue.600", "blue.200");
   // Conditionally set icon color based on agenticSearchMode AFTER fetching the active color
   const initialViewResearchIconColor = agenticSearchMode ? initialViewResearchIconColorValue : "currentColor";
-  
+
   const lastSearchItemRef = useRef<HTMLDivElement>(null);
   const threadContainerRef = useRef<HTMLDivElement>(null);
   const scrollTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -327,13 +374,13 @@ const Home: React.FC = () => {
   // Unified scroll function with animation enhancement
   const scrollToLatestSearch = (delay = 100) => {
     if (!lastSearchItemRef.current) return;
-    
+
     // Cancel any previous scroll timers
     if (scrollTimerRef.current) {
       clearTimeout(scrollTimerRef.current);
       scrollTimerRef.current = null;
     }
-    
+
     // Set new scroll timer
     scrollTimerRef.current = setTimeout(() => {
       lastSearchItemRef.current?.scrollIntoView({
@@ -361,7 +408,7 @@ const Home: React.FC = () => {
         useEnhancement: true
       });
     }
-    
+
     // Scroll to bottom after a short delay
     setTimeout(() => scrollToLatestSearch(50), 100);
   }, [performSearch, performAgenticSearch, sessionId, agenticSearchMode, isConversationMode, searchThread.length, conversationContext]);
@@ -375,7 +422,7 @@ const Home: React.FC = () => {
   const handleNewThread = useCallback(() => {
     clearSession();
     setConversationMode(true);
-    
+
     // Scroll to top after resetting
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [clearSession, setConversationMode]);
@@ -404,15 +451,15 @@ const Home: React.FC = () => {
 
   // Get latest search data for display
   const latestSearch = searchThread.length > 0 ? searchThread[searchThread.length - 1] : null;
-  
+
   // Extract latest related searches from the thread
   const latestRelatedSearches = latestSearch?.relatedSearches || [];
-  
+
   // Debug to verify what's being passed
   useEffect(() => {
     console.log('Latest search thread item:', latestSearch);
     console.log('Latest related searches from thread:', latestRelatedSearches);
-    
+
     // Additional debug for AI related searches
     if (latestSearch) {
       console.log('Thread item related searches check:', {
@@ -430,10 +477,10 @@ const Home: React.FC = () => {
     // Mobile initial view - Perplexity style
     if (isMobile) {
       return (
-        <Box 
-          minH="100vh" 
-          w="100%" 
-          display="flex" 
+        <Box
+          minH="100vh"
+          w="100%"
+          display="flex"
           flexDirection="column"
           justifyContent="center"
           position="relative"
@@ -454,9 +501,9 @@ const Home: React.FC = () => {
             zIndex={10}
             boxShadow="0 2px 5px rgba(0,0,0,0.05)"
           >
-            <Text 
-              fontWeight="bold" 
-              color="blue.600" 
+            <Text
+              fontWeight="bold"
+              color="blue.600"
               fontSize="lg"
               position="absolute"
               left="50%"
@@ -468,43 +515,43 @@ const Home: React.FC = () => {
           </Flex>
 
           {/* Logo/Brand area */}
-          <Flex 
-            direction="column" 
-            align="center" 
-            justify="center" 
+          <Flex
+            direction="column"
+            align="center"
+            justify="center"
             flex="1"
             mt="-100px"
           >
-            <MotionBox 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
+            <MotionBox
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               transition={{ duration: 0.5 }}
               textAlign="center"
               mb={10}
             >
-              <Heading 
+              <Heading
                 as="h1"
-                fontSize="3xl" 
-                fontWeight="bold" 
+                fontSize="3xl"
+                fontWeight="bold"
                 color="blue.600"
                 letterSpacing="tight"
                 mb={2}
               >
                 Nexus
               </Heading>
-              <Text 
-                fontSize="lg" 
-                fontWeight="medium" 
+              <Text
+                fontSize="lg"
+                fontWeight="medium"
                 color="gray.600"
               >
                 AI Search Engine
               </Text>
-              
+
               {/* Agentic Mode Toggle Buttons for Mobile Initial View */}
               <ButtonGroup size="sm" isAttached variant="outline" mt={6} width="calc(100% - 40px)" maxWidth="300px">
-                <Button 
+                <Button
                   leftIcon={<Icon as={FiSearch} />}
-                  onClick={() => setAgenticSearchMode(false)} 
+                  onClick={() => setAgenticSearchMode(false)}
                   isActive={!agenticSearchMode}
                   flex="1"
                   mr="-px"
@@ -512,9 +559,9 @@ const Home: React.FC = () => {
                 >
                   Standard
                 </Button>
-                <Button 
+                <Button
                   leftIcon={<Icon as={FiBriefcase} color={initialViewResearchIconColor} />}
-                  onClick={() => setAgenticSearchMode(true)} 
+                  onClick={() => setAgenticSearchMode(true)}
                   isActive={agenticSearchMode}
                   flex="1"
                   _active={{ bg: initialViewButtonActiveBg, color: initialViewButtonActiveColor }}
@@ -546,36 +593,36 @@ const Home: React.FC = () => {
 
     // Desktop initial view
     return (
-      <Box 
-        minH="100vh" 
-        w="100%" 
-        display="flex" 
-        alignItems="center" 
+      <Box
+        minH="100vh"
+        w="100%"
+        display="flex"
+        alignItems="center"
         justifyContent="center"
         pb="100px"
       >
         <Container maxW="container.lg" py={{ base: 0, md: 0 }} marginTop="-120px">
           <VStack spacing={{ base: 16, md: 20 }} align="center">
             {/* Logo/Brand and Headline */}
-            <MotionBox 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
+            <MotionBox
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               transition={{ duration: 0.5 }}
               textAlign="center"
             >
-              <Heading 
+              <Heading
                 as="h1"
-                fontSize={{ base: "4xl", md: "5xl" }} 
-                fontWeight="bold" 
+                fontSize={{ base: "4xl", md: "5xl" }}
+                fontWeight="bold"
                 color="blue.600"
                 letterSpacing="tight"
                 mb={2}
               >
                 Nexus
               </Heading>
-              <Text 
-                fontSize={{ base: "xl", md: "2xl" }} 
-                fontWeight="medium" 
+              <Text
+                fontSize={{ base: "xl", md: "2xl" }}
+                fontWeight="medium"
                 color="gray.600"
               >
                 Agentic AI Search Engine
@@ -583,18 +630,18 @@ const Home: React.FC = () => {
 
               {/* Agentic Mode Toggle Buttons for Desktop Initial View */}
               <ButtonGroup variant="outline" mt={8} size="md" isAttached>
-                <Button 
+                <Button
                   leftIcon={<Icon as={FiSearch} />}
-                  onClick={() => setAgenticSearchMode(false)} 
+                  onClick={() => setAgenticSearchMode(false)}
                   isActive={!agenticSearchMode}
                   _active={{ bg: initialViewButtonActiveBg, color: initialViewButtonActiveColor }}
                   px={6}
                 >
                   Standard Search
                 </Button>
-                <Button 
+                <Button
                   leftIcon={<Icon as={FiBriefcase} color={initialViewResearchIconColor} />}
-                  onClick={() => setAgenticSearchMode(true)} 
+                  onClick={() => setAgenticSearchMode(true)}
                   isActive={agenticSearchMode}
                   _active={{ bg: initialViewButtonActiveBg, color: initialViewButtonActiveColor }}
                   px={6}
@@ -707,7 +754,7 @@ const Home: React.FC = () => {
           <Text fontWeight="bold" color="blue.600" fontSize="lg">
             Nexus
           </Text>
-          
+
           <Flex align="center">
             <Button
               leftIcon={<AddIcon />}
@@ -725,8 +772,8 @@ const Home: React.FC = () => {
         </Flex>
 
         {/* Scrollable Thread Container - adjust padding to accommodate fixed elements */}
-        <Box 
-          pt="70px" 
+        <Box
+          pt="70px"
           pb="80px" // Increased to accommodate taller input
           px={3}
           maxW="100%"
@@ -748,7 +795,7 @@ const Home: React.FC = () => {
         </Box>
 
         {/* Fixed Bottom Search Bar */}
-        <FollowUpSearch 
+        <FollowUpSearch
           onSearch={handleSearch}
           isVisible={true}
           onNewThread={handleNewThread}
@@ -779,18 +826,18 @@ const Home: React.FC = () => {
         <Text fontWeight="bold" color="blue.600" fontSize="lg">
           Nexus
         </Text>
-        
+
         <Flex align="center">
-          
+
         </Flex>
       </Flex>
 
       {/* Scrollable Thread Container */}
-      <Box 
-        ref={threadContainerRef} 
+      <Box
+        ref={threadContainerRef}
         pt="70px"
         pb={{ base: "140px", md: "120px" }}
-        px={{ base: 2, md: 4, lg: 2 }} 
+        px={{ base: 2, md: 4, lg: 2 }}
         maxW={{ base: "100%", xl: "85%" }}
         mx="auto"
         overflowY="auto"
@@ -819,7 +866,7 @@ const Home: React.FC = () => {
         zIndex={999}
         style={{ pointerEvents: "none" }}
       >
-        <Box 
+        <Box
           style={{ pointerEvents: "auto" }}
           borderRadius="xl"
           boxShadow="lg"
@@ -830,8 +877,8 @@ const Home: React.FC = () => {
           mx="auto"
           width="100%"
         >
-          <FollowUpSearch 
-            onSearch={handleSearch} 
+          <FollowUpSearch
+            onSearch={handleSearch}
             isVisible={true}
             useFixedPosition={false}
             onNewThread={handleNewThread}

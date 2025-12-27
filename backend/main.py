@@ -10,7 +10,9 @@ from typing import Dict, List, Any, Optional
 from uuid import uuid4
 
 import uvicorn
+import json
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -122,6 +124,95 @@ async def health_check():
         "status": "healthy" if api_key_configured else "unhealthy",
         "api_key_configured": api_key_configured
     }
+
+
+@app.post("/api/search/stream")
+async def search_stream(request: SearchRequest, req: Request):
+    """
+    Execute a streaming search query using Perplexity API.
+    Returns Server-Sent Events for progressive response rendering.
+    """
+    try:
+        client_ip = req.client.host if req.client else "unknown"
+        logger.info(f"Streaming search request from {client_ip}: Query='{request.query}'")
+        
+        session_id = request.session_id or str(uuid4())
+        conversation_history = sessions.get(session_id, [])
+        model = request.model_name or "sonar"
+        
+        async def generate_stream():
+            """Async generator that yields SSE-formatted chunks"""
+            start_time = time.time()
+            full_content = ""
+            sources = []
+            related_searches = []
+            
+            try:
+                async for chunk in perplexity_service.search_stream(
+                    query=request.query,
+                    conversation_history=conversation_history,
+                    model=model
+                ):
+                    if chunk["type"] == "content":
+                        full_content += chunk["text"]
+                        # Send content chunk
+                        yield f"data: {json.dumps({'type': 'content', 'text': chunk['text']})}\n\n"
+                    
+                    elif chunk["type"] == "done":
+                        sources = chunk.get("sources", [])
+                        related_searches = chunk.get("related_searches", [])
+                        
+                        # Update session history
+                        if session_id not in sessions:
+                            sessions[session_id] = []
+                        sessions[session_id].append({"role": "user", "content": request.query})
+                        sessions[session_id].append({"role": "assistant", "content": full_content})
+                        
+                        # Keep only last 20 messages
+                        if len(sessions[session_id]) > 20:
+                            sessions[session_id] = sessions[session_id][-20:]
+                        
+                        execution_time = time.time() - start_time
+                        
+                        # Format sources for frontend
+                        formatted_sources = []
+                        for src in sources:
+                            formatted_sources.append({
+                                "url": src.get("url", ""),
+                                "link": src.get("url", ""),
+                                "title": src.get("title", "Source"),
+                                "snippet": src.get("snippet", ""),
+                                "source": "perplexity"
+                            })
+                        
+                        # Send final metadata
+                        final_data = {
+                            "type": "done",
+                            "session_id": session_id,
+                            "execution_time": execution_time,
+                            "sources": formatted_sources,
+                            "related_searches": related_searches
+                        }
+                        yield f"data: {json.dumps(final_data)}\n\n"
+                        
+            except Exception as e:
+                logger.error(f"Streaming error: {str(e)}")
+                error_data = {"type": "error", "message": str(e)}
+                yield f"data: {json.dumps(error_data)}\n\n"
+        
+        return StreamingResponse(
+            generate_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"  # Disable nginx buffering
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Stream setup error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Stream setup failed: {str(e)}")
 
 
 @app.post("/api/search", response_model=SearchResponse)

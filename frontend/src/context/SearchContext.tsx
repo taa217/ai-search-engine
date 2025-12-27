@@ -539,9 +539,9 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
         videoResults: [],
         hasImages: false,
         hasVideos: false,
-        isLoadingImages: true, // Start with images loading
+        isLoadingImages: false,
         relatedSearches: [],
-        isAgentic: false // Mark as standard search
+        isAgentic: false
       };
 
       // Add to thread history
@@ -553,129 +553,215 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
       // Add to session history
       setSessionHistory(prev => [...prev, searchTerm]);
 
-      // Split the request into two parts: text first, then images
-      // 1. Initial request for text results
-      const initialResponse = await axios.post<SearchResponse>(`${API_BASE_URL}/api/search`, {
-        query: searchTerm,
-        max_results: options.maxResults || 10,
-        use_web: options.useWeb !== undefined ? options.useWeb : true,
-        depth: options.depth || 2,
-        session_id: options.sessionId || sessionId,
-        modalities: ["text"], // Only request text first
-        use_enhancement: options.useEnhancement !== undefined ? options.useEnhancement : true,
-        model_provider: options.modelProvider,
-        model_name: options.modelName,
-        conversation_mode: isConversationMode
-      });
+      // Use streaming API for faster perceived response
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/search/stream`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query: searchTerm,
+            session_id: options.sessionId || sessionId,
+            model_name: options.modelName,
+          }),
+        });
 
-      // Save session ID from response
-      if (initialResponse.data.session_id) {
-        setSessionId(initialResponse.data.session_id);
-      }
-
-      // Process initial sources
-      const initialSources = initialResponse.data.sources.map(source => {
-        return {
-          ...source,
-          imageUrl: source.imageUrl || `https://via.placeholder.com/300x200/E0E0E0/AAAAAA?text=${encodeURIComponent(source.title || 'Source Image')}`,
-          isRelevant: true
-        };
-      });
-
-      // Update search thread with initial text results
-      setSearchThread(prev => {
-        const updatedThread = [...prev];
-        const loadingItemIndex = updatedThread.findIndex(item => item.id === newSearchId);
-
-        if (loadingItemIndex !== -1) {
-          updatedThread[loadingItemIndex] = {
-            ...updatedThread[loadingItemIndex],
-            results: initialResponse.data.results,
-            sources: initialSources,
-            reasoning: initialResponse.data.reasoning,
-            isLoading: false,
-            isError: false,
-            isLoadingImages: true, // Still loading images
-            enhancedQuery: initialResponse.data.enhanced_query || searchTerm,
-            relatedSearches: initialResponse.data.related_searches || [],
-            isAgentic: false
-          };
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        return updatedThread;
-      });
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error('No response body reader available');
+        }
 
-      // Update global state with initial results
-      setResults(initialResponse.data.results);
-      setReasoning(initialResponse.data.reasoning);
-      setSources(initialSources);
-      setExecutionTime(initialResponse.data.execution_time);
-      setQuery(searchTerm);
-      setEnhancedQuery(initialResponse.data.enhanced_query || null);
-      setRelatedSearches(initialResponse.data.related_searches || []);
+        const decoder = new TextDecoder();
+        let accumulatedContent = '';
+        let streamedSources: Source[] = [];
+        let streamedRelatedSearches: string[] = [];
+        let streamedSessionId = sessionId;
+        let streamedExecutionTime = 0;
+        let buffer = ''; // Buffer for incomplete SSE lines
 
-      // Extract conversation context if available
-      if (initialResponse.data.conversation_context) {
-        setConversationContext(initialResponse.data.conversation_context);
-      }
+        // Process the stream
+        while (true) {
+          const { done, value } = await reader.read();
 
-      // 2. Second request for images (in parallel or after showing text results)
-      try {
-        const imageResponse = await axios.post<SearchResponse>(`${API_BASE_URL}/api/search`, {
+          if (done) {
+            console.log('[Streaming] Stream done');
+            break;
+          }
+
+          // Append new chunk to buffer
+          buffer += decoder.decode(value, { stream: true });
+
+          // Split by double newline (SSE message separator) or single newline
+          const lines = buffer.split('\n');
+
+          // Keep the last incomplete line in buffer
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const dataStr = line.slice(6);
+              if (dataStr.trim() === '[DONE]') continue;
+
+              try {
+                const data = JSON.parse(dataStr);
+
+                if (data.type === 'content') {
+                  // Append new content
+                  accumulatedContent += data.text;
+                  console.log('[Streaming] Content chunk:', data.text.length, 'chars, total:', accumulatedContent.length);
+
+                  // Update thread with streaming content - use functional update
+                  setSearchThread(prev => {
+                    const updatedThread = [...prev];
+                    const loadingItemIndex = updatedThread.findIndex(item => item.id === newSearchId);
+
+                    if (loadingItemIndex !== -1) {
+                      updatedThread[loadingItemIndex] = {
+                        ...updatedThread[loadingItemIndex],
+                        results: [{ content: accumulatedContent, type: 'text' }],
+                        isLoading: true,
+                        isError: false,
+                      };
+                    }
+
+                    return updatedThread;
+                  });
+
+                  // Also update global results for immediate feedback
+                  setResults([{ content: accumulatedContent, type: 'text' }]);
+
+                } else if (data.type === 'done') {
+                  // Final metadata received
+                  streamedSources = data.sources || [];
+                  streamedRelatedSearches = data.related_searches || [];
+                  streamedSessionId = data.session_id || streamedSessionId;
+                  streamedExecutionTime = data.execution_time || 0;
+
+                  // Save session ID
+                  if (streamedSessionId) {
+                    setSessionId(streamedSessionId);
+                  }
+
+                  // Process sources with placeholder images
+                  const sourcesWithImages = streamedSources.map((source: Source) => ({
+                    ...source,
+                    imageUrl: `https://via.placeholder.com/300x200/E0E0E0/AAAAAA?text=${encodeURIComponent(source.title || 'Source')}`,
+                    isRelevant: true
+                  }));
+
+                  // Final update to thread item
+                  setSearchThread(prev => {
+                    const updatedThread = [...prev];
+                    const loadingItemIndex = updatedThread.findIndex(item => item.id === newSearchId);
+
+                    if (loadingItemIndex !== -1) {
+                      updatedThread[loadingItemIndex] = {
+                        ...updatedThread[loadingItemIndex],
+                        results: [{ content: accumulatedContent, type: 'text' }],
+                        sources: sourcesWithImages,
+                        reasoning: [
+                          { step: 1, thought: `Searching for: ${searchTerm}` },
+                          { step: 2, thought: `Found ${sourcesWithImages.length} sources` },
+                          { step: 3, thought: 'Generated answer with citations' }
+                        ],
+                        isLoading: false,
+                        isError: false,
+                        isLoadingImages: false,
+                        enhancedQuery: searchTerm,
+                        relatedSearches: streamedRelatedSearches,
+                      };
+                    }
+
+                    return updatedThread;
+                  });
+
+                  // Update global state
+                  setResults([{ content: accumulatedContent, type: 'text' }]);
+                  setSources(sourcesWithImages);
+                  setExecutionTime(streamedExecutionTime);
+                  setQuery(searchTerm);
+                  setRelatedSearches(streamedRelatedSearches);
+                  setReasoning([
+                    { step: 1, thought: `Searching for: ${searchTerm}` },
+                    { step: 2, thought: `Found ${sourcesWithImages.length} sources` },
+                    { step: 3, thought: 'Generated answer with citations' }
+                  ]);
+
+                } else if (data.type === 'error') {
+                  throw new Error(data.message || 'Stream error');
+                }
+              } catch (parseError) {
+                console.warn('Failed to parse SSE data:', dataStr);
+              }
+            }
+          }
+        }
+
+      } catch (streamError) {
+        console.warn('Streaming failed, falling back to regular API:', streamError);
+
+        // Fallback to non-streaming API
+        const initialResponse = await axios.post<SearchResponse>(`${API_BASE_URL}/api/search`, {
           query: searchTerm,
-          max_results: options.maxResults || 5,
-          use_web: true,
+          max_results: options.maxResults || 10,
+          use_web: options.useWeb !== undefined ? options.useWeb : true,
           depth: options.depth || 2,
-          session_id: initialResponse.data.session_id || sessionId,
-          modalities: ["images"], // Only request images in this second call
+          session_id: options.sessionId || sessionId,
+          modalities: ["text"],
           use_enhancement: options.useEnhancement !== undefined ? options.useEnhancement : true,
           model_provider: options.modelProvider,
           model_name: options.modelName,
           conversation_mode: isConversationMode
         });
 
-        // Update thread with image results
+        if (initialResponse.data.session_id) {
+          setSessionId(initialResponse.data.session_id);
+        }
+
+        const initialSources = initialResponse.data.sources.map(source => ({
+          ...source,
+          imageUrl: source.imageUrl || `https://via.placeholder.com/300x200/E0E0E0/AAAAAA?text=${encodeURIComponent(source.title || 'Source Image')}`,
+          isRelevant: true
+        }));
+
         setSearchThread(prev => {
           const updatedThread = [...prev];
-          const searchItemIndex = updatedThread.findIndex(item => item.id === newSearchId);
+          const loadingItemIndex = updatedThread.findIndex(item => item.id === newSearchId);
 
-          if (searchItemIndex !== -1) {
-            updatedThread[searchItemIndex] = {
-              ...updatedThread[searchItemIndex],
-              imageResults: imageResponse.data.image_results || [],
-              videoResults: imageResponse.data.video_results || [],
-              hasImages: imageResponse.data.has_images || false,
-              hasVideos: imageResponse.data.has_videos || false,
-              isLoadingImages: false // Images are now loaded
+          if (loadingItemIndex !== -1) {
+            updatedThread[loadingItemIndex] = {
+              ...updatedThread[loadingItemIndex],
+              results: initialResponse.data.results,
+              sources: initialSources,
+              reasoning: initialResponse.data.reasoning,
+              isLoading: false,
+              isError: false,
+              isLoadingImages: false,
+              enhancedQuery: initialResponse.data.enhanced_query || searchTerm,
+              relatedSearches: initialResponse.data.related_searches || [],
+              isAgentic: false
             };
           }
 
           return updatedThread;
         });
 
-        // Update global state with image results
-        setImageResults(imageResponse.data.image_results || []);
-        setVideoResults(imageResponse.data.video_results || []);
-        setHasImages(imageResponse.data.has_images || false);
-        setHasVideos(imageResponse.data.has_videos || false);
+        setResults(initialResponse.data.results);
+        setReasoning(initialResponse.data.reasoning);
+        setSources(initialSources);
+        setExecutionTime(initialResponse.data.execution_time);
+        setQuery(searchTerm);
+        setEnhancedQuery(initialResponse.data.enhanced_query || null);
+        setRelatedSearches(initialResponse.data.related_searches || []);
 
-      } catch (imageError) {
-        console.error('Error fetching images:', imageError);
-
-        // Mark images as failed loading but don't show an error message for the whole search
-        setSearchThread(prev => {
-          const updatedThread = [...prev];
-          const searchItemIndex = updatedThread.findIndex(item => item.id === newSearchId);
-
-          if (searchItemIndex !== -1) {
-            updatedThread[searchItemIndex] = {
-              ...updatedThread[searchItemIndex],
-              isLoadingImages: false // No longer loading images (even though failed)
-            };
-          }
-
-          return updatedThread;
-        });
+        if (initialResponse.data.conversation_context) {
+          setConversationContext(initialResponse.data.conversation_context);
+        }
       }
 
     } catch (error) {

@@ -167,6 +167,177 @@ class PerplexitySearchService:
                 logger.error(f"Unexpected error calling Perplexity API: {str(e)}")
                 raise
 
+    async def search_stream(
+        self,
+        query: str,
+        conversation_history: Optional[List[Dict[str, str]]] = None,
+        model: Optional[str] = None
+    ):
+        """
+        Execute a streaming search using Perplexity's Sonar API.
+        Yields content chunks as they arrive for lower perceived latency.
+        
+        Args:
+            query: The search query
+            conversation_history: Previous messages for context
+            model: Perplexity model to use
+            
+        Yields:
+            Dictionaries with either:
+            - {"type": "content", "text": "..."} for content chunks
+            - {"type": "done", "sources": [...], "related_searches": [...]} for final metadata
+        """
+        if not self.api_key:
+            raise ValueError("PERPLEXITY_API_KEY is not configured")
+        
+        model_to_use = model or self.default_model
+        
+        # Build messages array
+        messages = []
+        messages.append({
+            "role": "system",
+            "content": (
+                "You are a helpful AI search assistant called Nexus. "
+                "Provide comprehensive, accurate answers based on current web information. "
+                "Always cite your sources with numbered references like [1], [2], etc. "
+                "Be conversational but informative. "
+                "If asked follow-up questions, use the conversation context appropriately."
+            )
+        })
+        
+        if conversation_history:
+            recent_history = conversation_history[-10:]
+            messages.extend(recent_history)
+        
+        messages.append({"role": "user", "content": query})
+        
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream"
+        }
+        
+        payload = {
+            "model": model_to_use,
+            "messages": messages,
+            "temperature": 0.2,
+            "return_citations": True,
+            "return_related_questions": True,
+            "stream": True  # Enable streaming
+        }
+        
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            try:
+                logger.info(f"Calling Perplexity API (streaming) with model: {model_to_use}")
+                
+                async with client.stream(
+                    "POST",
+                    f"{self.BASE_URL}/chat/completions",
+                    headers=headers,
+                    json=payload
+                ) as response:
+                    response.raise_for_status()
+                    
+                    full_content = ""
+                    sources = []
+                    related_searches = []
+                    
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+                        
+                        # SSE format: "data: {...}"
+                        if line.startswith("data: "):
+                            data_str = line[6:]  # Remove "data: " prefix
+                            
+                            # DEBUG: Log the raw SSE data
+                            logger.info(f"SSE chunk received: {data_str[:200]}...")
+                            
+                            if data_str.strip() == "[DONE]":
+                                # Stream complete
+                                logger.info("SSE stream complete [DONE]")
+                                break
+                            
+                            try:
+                                import json
+                                data = json.loads(data_str)
+                                
+                                # DEBUG: Log the structure
+                                if data.get("choices"):
+                                    choice = data["choices"][0]
+                                    logger.info(f"Choice keys: {list(choice.keys())}")
+                                    if "delta" in choice:
+                                        logger.info(f"Delta: {choice.get('delta')}")
+                                    if "message" in choice:
+                                        msg = choice.get("message", {})
+                                        logger.info(f"Message content length: {len(msg.get('content', ''))}")
+                                
+                                # Extract content - handle both delta (OpenAI style) and message (cumulative)
+                                if data.get("choices") and len(data["choices"]) > 0:
+                                    choice = data["choices"][0]
+                                    
+                                    # Try delta first (standard streaming format)
+                                    delta = choice.get("delta", {})
+                                    new_content = delta.get("content", "")
+                                    
+                                    # If no delta content, check for message (cumulative format)
+                                    if not new_content:
+                                        message = choice.get("message", {})
+                                        cumulative_content = message.get("content", "")
+                                        # Only yield the new portion
+                                        if cumulative_content and len(cumulative_content) > len(full_content):
+                                            new_content = cumulative_content[len(full_content):]
+                                    
+                                    if new_content:
+                                        logger.info(f"Yielding content chunk: {len(new_content)} chars")
+                                        full_content += new_content
+                                        yield {"type": "content", "text": new_content}
+                                
+                                # Check for citations in the response (usually in final chunks)
+                                if "citations" in data:
+                                    citations = data.get("citations", [])
+                                    for i, citation in enumerate(citations):
+                                        if isinstance(citation, str):
+                                            sources.append({
+                                                "index": i + 1,
+                                                "url": citation,
+                                                "title": f"Source {i + 1}"
+                                            })
+                                        elif isinstance(citation, dict):
+                                            sources.append({
+                                                "index": i + 1,
+                                                "url": citation.get("url", ""),
+                                                "title": citation.get("title", f"Source {i + 1}"),
+                                                "snippet": citation.get("snippet", "")
+                                            })
+                                
+                                # Check for related questions
+                                if "related_questions" in data:
+                                    related_searches = data.get("related_questions", [])
+                                    
+                            except json.JSONDecodeError:
+                                logger.warning(f"Failed to parse SSE data: {data_str}")
+                                continue
+                    
+                    # Yield final metadata
+                    yield {
+                        "type": "done",
+                        "sources": sources,
+                        "related_searches": related_searches,
+                        "full_content": full_content,
+                        "model_used": model_to_use
+                    }
+                    
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Perplexity API HTTP error (streaming): {e.response.status_code}")
+                raise ValueError(f"Perplexity API error: {e.response.status_code}")
+            except httpx.RequestError as e:
+                logger.error(f"Perplexity API request error (streaming): {str(e)}")
+                raise ValueError(f"Failed to connect to Perplexity API: {str(e)}")
+            except Exception as e:
+                logger.error(f"Unexpected error in streaming: {str(e)}")
+                raise
+
 
 class PerplexityRawSearchService:
     """
