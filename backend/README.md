@@ -1,110 +1,120 @@
-# Nexus AI Search Engine
+# Nexus AI Search Engine - Perplexity Backend
 
-A high-performance, agentic AI search engine that combines real-time web search with multiple AI models for synthesis.
+A clean, minimal AI search engine backend powered by [Perplexity API](https://docs.perplexity.ai/).
 
 ## Features
 
-- **Multiple AI Model Support**: Use OpenAI, Google's Gemini, or Anthropic's Claude models
-- **Real-time Web Search**: Integrates with DuckDuckGo and Wikipedia for up-to-date information
-- **Async Architecture**: Built with FastAPI and async I/O for high throughput
-- **Intelligent Caching**: Efficient response caching to reduce latency and API costs
-- **Detailed Reasoning**: Shows step-by-step thinking behind search results
+- 🔍 **AI-Powered Search**: Uses Perplexity's Sonar models for grounded, cited answers
+- 💬 **Conversation Context**: Maintains session history for follow-up questions  
+- ⚡ **Fast & Simple**: Minimal dependencies, clean architecture
+- 📚 **Source Citations**: Every answer includes source URLs and snippets
 
-## Setup
+## Quick Start
 
-1. Clone the repository
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Copy `.env.example` to `.env` and add your API keys:
-   ```bash
-   cp .env.example .env
-   # Edit .env to add your API keys
-   ```
-
-## API Keys
-
-You need at least one of these API keys to use the service:
-
-- **OpenAI API Key**: Get from [OpenAI Platform](https://platform.openai.com/account/api-keys)
-- **Google Gemini API Key**: Get from [Google AI Studio](https://makersuite.google.com/app/apikey)
-- **Anthropic Claude API Key**: Get from [Anthropic Console](https://console.anthropic.com/account/keys)
-
-## Running the API
-
-Use the advanced script to run with multi-model support:
+### 1. Install Dependencies
 
 ```bash
-python run_advanced.py --reload
+cd backend
+pip install -r requirements.txt
 ```
 
-The API will be available at http://localhost:8000.
+### 2. Configure Environment
 
-## API Usage
+Copy `.env.example` to `.env` and add your Perplexity API key:
 
-### Search Endpoint
-
-```http
-POST /api/search
+```bash
+cp .env.example .env
 ```
 
-Request body:
+Edit `.env`:
+```
+PERPLEXITY_API_KEY=pplx-your-api-key-here
+PERPLEXITY_MODEL=sonar
+```
 
+### 3. Run the Server
+
+```bash
+python main.py
+```
+
+Or with uvicorn directly:
+```bash
+uvicorn main:app --reload --port 8000
+```
+
+## API Endpoints
+
+### `GET /` - Service Info
+Returns basic service information and available models.
+
+### `GET /health` - Health Check
+Returns health status and API key configuration status.
+
+### `POST /api/search` - Execute Search
+Main search endpoint. Returns AI-generated answer with citations.
+
+**Request:**
 ```json
 {
-  "query": "latest advancements in quantum computing",
+  "query": "What is the latest news about AI?",
+  "session_id": "optional-session-id",
   "max_results": 5,
-  "model": "gemini"  // Can be "openai", "gemini", or "claude"
+  "model": "sonar"
 }
 ```
 
-If no model is specified, it will use the `DEFAULT_MODEL` from your .env file.
-
-### Response Format
-
+**Response:**
 ```json
 {
-  "results": [
-    {
-      "content": "Comprehensive answer synthesized by AI...",
-      "type": "text"
-    }
-  ],
-  "reasoning": [
-    {
-      "step": 1,
-      "thought": "First analyzed the query to understand..."
-    },
-    {
-      "step": 2, 
-      "thought": "Then searched through multiple sources..."
-    }
-  ],
+  "answer": "Based on recent developments...[1][2]",
   "sources": [
     {
-      "title": "Recent Advances in Quantum Computing",
-      "link": "https://example.com/quantum-advances",
-      "snippet": "Researchers have made significant progress in..."
+      "index": 1,
+      "url": "https://example.com/article",
+      "title": "AI News Article",
+      "snippet": "Recent advances in..."
     }
   ],
-  "execution_time": 0.75,
-  "model_used": "gemini"
+  "session_id": "uuid-here",
+  "execution_time": 1.23,
+  "model_used": "sonar",
+  "related_searches": ["follow up question 1", "follow up question 2"]
 }
 ```
 
-## Models Comparison
+### `GET /api/sessions/{session_id}` - Get Session
+Returns conversation history for a session.
 
-Each model has its own strengths:
+### `DELETE /api/sessions/{session_id}` - Delete Session
+Clears a session's conversation history.
 
-- **OpenAI (GPT)**: Comprehensive knowledge, excellent reasoning
-- **Gemini**: Excellent at interpreting factual information, strong with technical content
-- **Claude**: Strong reasoning capabilities, good with nuanced interpretations
+## Available Models
 
-## Troubleshooting
+| Model | Description |
+|-------|-------------|
+| `sonar` | Fast, cost-effective search with grounding |
+| `sonar-pro` | Advanced search for complex queries |
+| `sonar-reasoning-pro` | Best for queries requiring reasoning |
 
-If you encounter issues:
+## Environment Variables
 
-1. Verify your API keys are correctly set in the `.env` file
-2. Check API quota limits for the respective services
-3. Ensure you're using valid model names as specified in the documentation
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PERPLEXITY_API_KEY` | Your Perplexity API key | Required |
+| `PERPLEXITY_MODEL` | Default model to use | `sonar` |
+| `PORT` | Server port | `8000` |
+| `DEBUG` | Enable debug mode | `False` |
+| `ALLOWED_ORIGINS` | CORS origins (comma-separated) | `http://localhost:3000` |
+
+## Project Structure
+
+```
+backend/
+├── main.py                 # FastAPI application & endpoints
+├── perplexity_service.py   # Perplexity API client
+├── requirements.txt        # Python dependencies
+├── .env                    # Environment variables (not committed)
+├── .env.example            # Example environment file
+└── README.md               # This file
+```

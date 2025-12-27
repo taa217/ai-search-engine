@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, ReactNode, useCallback, use
 import axios from 'axios';
 
 // API base URL - update this to your actual API endpoint
-const API_BASE_URL = 'https://ai-search-engine-qli1.onrender.com' // 'http://localhost:8000' // 'https://ai-search-engine-qli1.onrender.com' //;
+const API_BASE_URL = 'http://localhost:8000'; // Local Perplexity backend
 
 // Types
 export interface SearchResult {
