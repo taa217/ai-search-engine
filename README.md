@@ -1,31 +1,29 @@
 # Nexus AI Search Engine
 
-A high-performance, agentic AI search engine that combines real-time web search with advanced AI synthesis capabilities. Built for production environments with scalability and reliability in mind.
+A high-performance, agentic AI search engine powered by the Perplexity API. It combines real-time web search with advanced AI synthesis capabilities, offering both fast standard searches and deep agentic research modes.
 
 ## Features
 
-- **Advanced AI Search**: Combines multiple search sources with LLM reasoning for comprehensive results
-- **Real-time Web Search**: Integrates with search engines and Wikipedia for up-to-date information
-- **Async Architecture**: Built with FastAPI and async I/O for high throughput and performance
-- **Intelligent Caching**: Efficient response caching to reduce latency and API costs
-- **Scalable Design**: Built to handle thousands of concurrent users
-- **Fallback Mechanisms**: Graceful degradation when services are unavailable
-- **Comprehensive Logging**: Detailed logging for monitoring and debugging
-- **Environment Configuration**: Simple environment-based configuration
+- **Perplexity Integration**: Powered by state-of-the-art Perplexity models (sonar, sonar-pro).
+- **Real-time Web Search**: Up-to-the-minute information retrieval.
+- **Streaming Responses**: Server-Sent Events (SSE) for real-time answer generation.
+- **Agentic Research Mode**: Deep dive capabilities with multi-step reasoning (using `sonar-pro`).
+- **Multi-modal Support**: Handles text and image search results.
+- **Session Management**: Maintains conversation context for follow-up queries.
+- **Vercel Ready**: Configured for easy serverless deployment on Vercel.
 
 ## Project Structure
 
 ```
 nexus-ai-search/
-├── backend/                  # Backend API service
-│   ├── src/                  # Source code
-│   │   ├── agents/           # AI agent implementations
-│   │   ├── utils/            # Utility modules
-│   │   └── main.py           # API entry point
-│   ├── logs/                 # Log files
-│   ├── .env                  # Environment variables (create from .env.example)
-│   ├── .env.example          # Example environment file
-│   └── requirements.txt      # Python dependencies
+├── backend/                  # FastAPI Backend
+│   ├── main.py               # API Entry point & Application definition
+│   ├── perplexity_service.py # Perplexity API integration logic
+│   ├── .env                  # Environment variables
+│   ├── .env.example          # Example environment configuration
+│   ├── requirements.txt      # Python dependencies
+│   └── vercel.json           # Vercel deployment configuration
+├── frontend/                 # React Frontend
 └── README.md                 # Project documentation
 ```
 
@@ -34,33 +32,33 @@ nexus-ai-search/
 ### Prerequisites
 
 - Python 3.9+
-- OpenAI API key (or alternative LLM API)
+- Perplexity API Key
 
 ### Installation
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/nexus-ai-search.git
-   cd nexus-ai-search
+   git clone <repository-url>
+   cd ai-search-engine
    ```
 
-2. Set up a virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. Install dependencies:
+2. Set up the backend:
    ```bash
    cd backend
+   python -m venv venv
+   # Windows
+   venv\Scripts\activate
+   # Unix/MacOS
+   source venv/bin/activate
+   
    pip install -r requirements.txt
    ```
 
-4. Set up environment variables:
+3. Configure environment variables:
    ```bash
    cp .env.example .env
-   # Edit .env with your API keys and configuration
    ```
+   Edit `.env` and add your `PERPLEXITY_API_KEY`.
 
 ### Running the API
 
@@ -68,89 +66,60 @@ Start the development server:
 
 ```bash
 cd backend
-uvicorn src.main_super:app --reload
+python main.py
+# OR
+uvicorn main:app --reload
 ```
 
-The API will be available at http://localhost:8000.
+The API will be available at `http://localhost:8000`.
 
 ## API Usage
 
-### Search Endpoint
+### Streaming Search (Standard)
 
 ```http
-POST /api/search
+POST /api/search/stream
 ```
 
-Request body:
-
+**Body:**
 ```json
 {
-  "query": "What is quantum computing?",
-  "max_results": 5,
-  "use_web": true,
-  "depth": 2,
-  "use_ai_synthesis": true,
-  "search_type": "comprehensive"
+  "query": "latest developments in fusion energy",
+  "session_id": "optional-uuid",
+  "model_name": "sonar"
 }
 ```
 
-Response:
+**Response:** Server-Sent Events (SSE) stream containing JSON chunks with content updates and final sources.
 
+### Agentic Search (Deep Research)
+
+```http
+POST /agentic-search
+```
+
+**Body:**
 ```json
 {
-  "results": [
-    {
-      "content": "Quantum computing is a type of computation that harnesses quantum mechanical phenomena such as superposition and entanglement to perform operations on data. Unlike classical computers that use bits (0 or 1), quantum computers use quantum bits or qubits, which can exist in multiple states simultaneously. This allows quantum computers to solve certain complex problems exponentially faster than classical computers, particularly in areas like cryptography, optimization, and quantum physics simulations.",
-      "type": "text"
-    }
-  ],
-  "reasoning": [
-    {
-      "step": 1,
-      "thought": "Analyzed query to determine it's seeking a definition and explanation of quantum computing"
-    },
-    {
-      "step": 2,
-      "thought": "Retrieved information from multiple sources including academic and educational websites"
-    },
-    {
-      "step": 3,
-      "thought": "Synthesized information to provide a comprehensive yet concise explanation"
-    }
-  ],
-  "sources": [
-    {
-      "title": "Quantum Computing - IBM",
-      "link": "https://www.ibm.com/quantum-computing/",
-      "snippet": "Quantum computing harnesses the phenomena of quantum mechanics to deliver a huge leap forward in computation."
-    }
-  ],
-  "execution_time": 0.857
+  "query": "comprehensive analysis of quantum computing market",
+  "session_id": "optional-uuid"
 }
 ```
 
-## Configuration
+**Response:** JSON object containing a research plan, synthesis, and sources.
 
-The application can be configured using environment variables. See `.env.example` for all available options.
+## Deployment
 
-## Scaling for Production
+### Deploying to Vercel
 
-For production deployments:
+The backend is configured for Vercel deployment using `vercel.json`.
 
-1. Use a production ASGI server:
+1. Install Vercel CLI: `npm i -g vercel`
+2. Run deployment from the root or backend directory:
    ```bash
-   uvicorn src.main_super:app --host 0.0.0.0 --port 8000 --workers 4
+   vercel
    ```
-
-2. Consider using a reverse proxy like Nginx
-
-3. Implement a distributed cache with Redis
-
-4. Deploy with Docker and container orchestration:
-   ```bash
-   docker build -t nexus-ai-search .
-   docker run -p 8000:8000 --env-file .env nexus-ai-search
-   ```
+3. Set the `PERPLEXITY_API_KEY` in your Vercel project settings.
 
 ## License
 
