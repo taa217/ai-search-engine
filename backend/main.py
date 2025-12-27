@@ -307,6 +307,9 @@ async def get_session(session_id: str):
     raise HTTPException(status_code=404, detail="Session not found")
 
 
+# Vercel serverless handler - the 'app' variable is used by Vercel
+handler = app
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     debug = os.getenv("DEBUG", "False").lower() == "true"
