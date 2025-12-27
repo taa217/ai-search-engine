@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, ReactNode, useCallback, use
 import axios from 'axios';
 
 // API base URL - update this to your actual API endpoint
-const API_BASE_URL = 'http://localhost:8000'; // Local Perplexity backend
+const API_BASE_URL = 'https://nexus-search-api.vercel.app'; // Deployed Perplexity backend
 
 // Types
 export interface SearchResult {
@@ -184,7 +184,7 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
   const [relatedSearches, setRelatedSearches] = useState<string[]>([]);
   const [agenticSearch, setAgenticSearch] = useState<AgenticSearchResponse | null>(null);
   const [agenticSearchMode, setAgenticSearchMode] = useState<boolean>(false);
-  
+
   // Thread of search items to maintain conversation context in UI
   const [searchThread, setSearchThread] = useState<SearchThreadItem[]>([]);
 
@@ -211,7 +211,7 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
     if (sessionId) {
       localStorage.setItem('nexus_session_id', sessionId);
     }
-    
+
     // Save the search thread for persistence
     if (searchThread.length > 0) {
       // Only save last 10 items to avoid localStorage limits
@@ -225,11 +225,11 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
     // Find the search that needs to be retried
     const searchItemIndex = searchThread.findIndex(item => item.id === searchId);
     if (searchItemIndex === -1) return;
-    
+
     // Get the search item to retry
     const searchItem = searchThread[searchItemIndex];
     const searchTerm = searchItem.query;
-    
+
     try {
       // Update loading state for this item only
       setSearchThread(prev => {
@@ -241,7 +241,7 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
         };
         return updatedThread;
       });
-      
+
       // Set global loading state
       setIsLoading(true);
       setError(null);
@@ -304,17 +304,17 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
       setHasImages(response.data.has_images || false);
       setHasVideos(response.data.has_videos || false);
       setRelatedSearches(response.data.related_searches || []);
-      
+
       if (response.data.conversation_context) {
         setConversationContext(response.data.conversation_context);
       }
-      
+
     } catch (error) {
       console.error('Retry search error:', error);
-      
+
       // Format error message based on error type
       let errorMessage = 'An unexpected error occurred while searching';
-      
+
       if (axios.isAxiosError(error)) {
         if (error.code === 'ECONNABORTED') {
           errorMessage = 'Search request timed out. Please try again.';
@@ -332,25 +332,25 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
           errorMessage = 'No response from search server. Please check your connection and try again.';
         }
       }
-      
+
       // Update the search thread item with error
       setSearchThread(prev => {
         const updatedThread = [...prev];
         const searchItemIndex = updatedThread.findIndex(item => item.id === searchId);
-        
+
         if (searchItemIndex !== -1) {
           updatedThread[searchItemIndex] = {
             ...updatedThread[searchItemIndex],
-            results: [{content: errorMessage, type: 'error'}],
+            results: [{ content: errorMessage, type: 'error' }],
             isLoading: false,
             isError: true,
             isLoadingImages: false
           };
         }
-        
+
         return updatedThread;
       });
-      
+
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -491,7 +491,7 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
       setSearchThread(prev => {
         const updatedThread = [...prev];
         // newSearchId is now in scope
-        const loadingItemIndex = updatedThread.findIndex(item => item.id === newSearchId); 
+        const loadingItemIndex = updatedThread.findIndex(item => item.id === newSearchId);
         if (loadingItemIndex !== -1) {
           updatedThread[loadingItemIndex] = {
             ...updatedThread[loadingItemIndex],
@@ -512,7 +512,7 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
 
   const performSearch = async (searchQuery?: string, options: SearchOptions = {}) => {
     const searchTerm = searchQuery || query;
-    
+
     if (!searchTerm.trim()) {
       setError('Please enter a search query');
       return;
@@ -546,7 +546,7 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
 
       // Add to thread history
       setSearchThread(prev => [...prev, newSearchItem]);
-      
+
       setIsLoading(true);
       setError(null);
 
@@ -586,7 +586,7 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
       setSearchThread(prev => {
         const updatedThread = [...prev];
         const loadingItemIndex = updatedThread.findIndex(item => item.id === newSearchId);
-        
+
         if (loadingItemIndex !== -1) {
           updatedThread[loadingItemIndex] = {
             ...updatedThread[loadingItemIndex],
@@ -601,7 +601,7 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
             isAgentic: false
           };
         }
-        
+
         return updatedThread;
       });
 
@@ -613,12 +613,12 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
       setQuery(searchTerm);
       setEnhancedQuery(initialResponse.data.enhanced_query || null);
       setRelatedSearches(initialResponse.data.related_searches || []);
-      
+
       // Extract conversation context if available
       if (initialResponse.data.conversation_context) {
         setConversationContext(initialResponse.data.conversation_context);
       }
-      
+
       // 2. Second request for images (in parallel or after showing text results)
       try {
         const imageResponse = await axios.post<SearchResponse>(`${API_BASE_URL}/api/search`, {
@@ -633,12 +633,12 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
           model_name: options.modelName,
           conversation_mode: isConversationMode
         });
-        
+
         // Update thread with image results
         setSearchThread(prev => {
           const updatedThread = [...prev];
           const searchItemIndex = updatedThread.findIndex(item => item.id === newSearchId);
-          
+
           if (searchItemIndex !== -1) {
             updatedThread[searchItemIndex] = {
               ...updatedThread[searchItemIndex],
@@ -649,41 +649,41 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
               isLoadingImages: false // Images are now loaded
             };
           }
-          
+
           return updatedThread;
         });
-        
+
         // Update global state with image results
         setImageResults(imageResponse.data.image_results || []);
         setVideoResults(imageResponse.data.video_results || []);
-        setHasImages(imageResponse.data.has_images || false); 
+        setHasImages(imageResponse.data.has_images || false);
         setHasVideos(imageResponse.data.has_videos || false);
-        
+
       } catch (imageError) {
         console.error('Error fetching images:', imageError);
-        
+
         // Mark images as failed loading but don't show an error message for the whole search
         setSearchThread(prev => {
           const updatedThread = [...prev];
           const searchItemIndex = updatedThread.findIndex(item => item.id === newSearchId);
-          
+
           if (searchItemIndex !== -1) {
             updatedThread[searchItemIndex] = {
               ...updatedThread[searchItemIndex],
               isLoadingImages: false // No longer loading images (even though failed)
             };
           }
-          
+
           return updatedThread;
         });
       }
-      
+
     } catch (error) {
       console.error('Search error:', error);
-      
+
       // Format error message based on error type
       let errorMessage = 'An unexpected error occurred while searching';
-      
+
       if (axios.isAxiosError(error)) {
         if (error.code === 'ECONNABORTED') {
           errorMessage = 'Search request timed out. Please try again.';
@@ -701,25 +701,25 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
           errorMessage = 'No response from search server. Please check your connection and try again.';
         }
       }
-      
+
       // Update the search thread item with error
       setSearchThread(prev => {
         const updatedThread = [...prev];
         const loadingItemIndex = updatedThread.findIndex(item => item.isLoading);
-        
+
         if (loadingItemIndex !== -1) {
           updatedThread[loadingItemIndex] = {
             ...updatedThread[loadingItemIndex],
-            results: [{content: errorMessage, type: 'error'}],
+            results: [{ content: errorMessage, type: 'error' }],
             isLoading: false,
             isError: true,
             isLoadingImages: false
           };
         }
-        
+
         return updatedThread;
       });
-      
+
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -730,7 +730,7 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
     // Clear session from localStorage
     localStorage.removeItem('nexus_session_id');
     localStorage.removeItem('nexus_search_thread');
-    
+
     // Reset all state
     setSessionId(null);
     setSessionHistory([]);
@@ -747,7 +747,7 @@ export const SearchProvider = ({ children }: SearchProviderProps) => {
     setConversationContext('');
     setRelatedSearches([]);
     setAgenticSearch(null);
-    
+
     // Call the backend to delete the session if we have an ID
     if (sessionId) {
       axios.delete(`${API_BASE_URL}/api/sessions/${sessionId}`)
